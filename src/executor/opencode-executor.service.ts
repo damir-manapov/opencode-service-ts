@@ -1,7 +1,10 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { createOpencode, createOpencodeClient } from "@opencode-ai/sdk";
 import type { ChatMessage, StreamChunk } from "../chat/chat.types.js";
 import type { GeneratedWorkspace } from "../workspace/workspace.types.js";
+
+type OpencodeClient = Awaited<ReturnType<typeof createOpencodeClient>>;
+type OpencodeInstance = Awaited<ReturnType<typeof createOpencode>>;
 
 export interface ExecuteOptions {
   workspace: GeneratedWorkspace;
@@ -19,37 +22,120 @@ export interface ExecuteResult {
   }>;
 }
 
+/**
+ * Check if OpenCode server is running at the given URL
+ */
+async function isServerRunning(baseUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${baseUrl}/global/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 @Injectable()
-export class OpencodeExecutorService {
+export class OpencodeExecutorService implements OnModuleDestroy {
   private readonly logger = new Logger(OpencodeExecutorService.name);
+  private client: OpencodeClient | null = null;
+  private instance: OpencodeInstance | null = null;
+  private initPromise: Promise<OpencodeClient> | null = null;
+
+  private readonly hostname = "127.0.0.1";
+  private readonly port = 4096;
+  private readonly timeout = 30000;
+
+  async onModuleDestroy(): Promise<void> {
+    this.dispose();
+  }
 
   /**
    * Execute OpenCode with the given workspace and messages
    * Returns the full response (non-streaming)
    */
   async execute(options: ExecuteOptions): Promise<ExecuteResult> {
-    const { workspace, messages, environment } = options;
+    const { workspace, messages, environment, model } = options;
 
-    // Build the prompt from messages
+    // Inject environment variables for provider credentials
+    this.injectEnvironment(environment);
+
+    const client = await this.getClient(workspace.path);
     const prompt = this.buildPrompt(messages);
 
-    // Execute opencode CLI
-    const result = await this.runOpencode(workspace.path, prompt, environment);
+    // Parse model
+    const providerID = model?.providerId ?? "anthropic";
+    const modelID = model?.modelId ?? "claude-sonnet-4-20250514";
 
-    return result;
+    this.logger.debug(`Executing prompt in workspace: ${workspace.path}`);
+    this.logger.debug(`Model: ${providerID}/${modelID}`);
+
+    // Create a temporary session for this request with workspace directory
+    const createResponse = await client.session.create({
+      query: {
+        directory: workspace.path,
+      },
+      body: {
+        title: "OpenCode Service Request",
+      },
+    });
+
+    if (!createResponse.data) {
+      throw new Error("Failed to create OpenCode session");
+    }
+
+    const session = createResponse.data;
+
+    try {
+      // Execute with OpenCode - tools are available from workspace/.opencode/tool/
+      const response = await client.session.prompt({
+        path: { id: session.id },
+        body: {
+          model: { providerID, modelID },
+          parts: [{ type: "text", text: prompt }],
+        },
+      });
+
+      if (!response.data) {
+        throw new Error("No response from OpenCode");
+      }
+
+      // Collect all text parts and tool calls from response
+      const textParts: string[] = [];
+      const toolCalls: ExecuteResult["toolCalls"] = [];
+
+      for (const part of response.data.parts) {
+        if (part.type === "text") {
+          textParts.push(part.text);
+        } else if (part.type === "tool") {
+          toolCalls.push({
+            name: part.tool,
+            input: part.metadata ?? {},
+            output: part.state,
+          });
+        }
+      }
+
+      return {
+        content: textParts.join("\n") || "No response generated",
+        toolCalls,
+      };
+    } finally {
+      // Clean up session
+      await client.session.delete({ path: { id: session.id } }).catch(() => {
+        // Ignore cleanup errors
+      });
+    }
   }
 
   /**
    * Execute OpenCode with streaming response
    */
   async *executeStreaming(options: ExecuteOptions): AsyncGenerator<StreamChunk, void, undefined> {
-    const { workspace, messages, environment } = options;
-
-    const prompt = this.buildPrompt(messages);
-
-    // For now, we'll execute and yield the result as a single chunk
-    // TODO: Implement proper streaming when OpenCode SDK supports it
-    const result = await this.runOpencode(workspace.path, prompt, environment);
+    // For now, execute fully and yield chunks
+    // TODO: Implement proper streaming with SDK event subscription
+    const result = await this.execute(options);
 
     // Yield tool calls first
     for (const toolCall of result.toolCalls) {
@@ -68,9 +154,48 @@ export class OpencodeExecutorService {
     yield { type: "done" };
   }
 
+  private async getClient(_workspacePath: string): Promise<OpencodeClient> {
+    if (this.client) {
+      return this.client;
+    }
+
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    this.initPromise = this.initializeClient();
+    try {
+      this.client = await this.initPromise;
+      return this.client;
+    } finally {
+      this.initPromise = null;
+    }
+  }
+
+  private async initializeClient(): Promise<OpencodeClient> {
+    const baseUrl = `http://${this.hostname}:${this.port}`;
+
+    // Check if server is already running
+    const isRunning = await isServerRunning(baseUrl);
+
+    if (isRunning) {
+      this.logger.log("Connecting to existing OpenCode server");
+      return createOpencodeClient({ baseUrl });
+    }
+
+    this.logger.log("Starting new OpenCode server");
+
+    // Start new server
+    this.instance = await createOpencode({
+      hostname: this.hostname,
+      port: this.port,
+      timeout: this.timeout,
+    });
+
+    return this.instance.client;
+  }
+
   private buildPrompt(messages: ChatMessage[]): string {
-    // Build a single prompt string from messages
-    // The last user message is the main prompt
     const parts: string[] = [];
 
     for (const msg of messages) {
@@ -87,65 +212,21 @@ export class OpencodeExecutorService {
   }
 
   /**
-   * Run opencode CLI in the workspace directory
+   * Inject environment variables for provider credentials
    */
-  private async runOpencode(
-    workspacePath: string,
-    prompt: string,
-    environment: Record<string, string>,
-  ): Promise<ExecuteResult> {
-    return new Promise((resolve, reject) => {
-      const args = ["--prompt", prompt, "--non-interactive"];
-
-      this.logger.debug(`Running opencode in ${workspacePath}`);
-      this.logger.debug(`Prompt: ${prompt.slice(0, 100)}...`);
-
-      const child: ChildProcess = spawn("opencode", args, {
-        cwd: workspacePath,
-        env: environment,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      child.stdout?.on("data", (data: Buffer) => {
-        stdout += data.toString();
-      });
-
-      child.stderr?.on("data", (data: Buffer) => {
-        stderr += data.toString();
-      });
-
-      child.on("close", (code) => {
-        if (code !== 0) {
-          this.logger.error(`OpenCode exited with code ${code}: ${stderr}`);
-          reject(new Error(`OpenCode execution failed: ${stderr || "Unknown error"}`));
-          return;
-        }
-
-        // Parse the output
-        const result = this.parseOutput(stdout);
-        resolve(result);
-      });
-
-      child.on("error", (err) => {
-        this.logger.error(`Failed to start OpenCode: ${err.message}`);
-        reject(new Error(`Failed to start OpenCode: ${err.message}`));
-      });
-    });
+  private injectEnvironment(env: Record<string, string>): void {
+    for (const [key, value] of Object.entries(env)) {
+      process.env[key] = value;
+    }
   }
 
-  /**
-   * Parse OpenCode CLI output
-   * TODO: Implement proper parsing based on OpenCode output format
-   */
-  private parseOutput(output: string): ExecuteResult {
-    // For now, return the raw output as content
-    // TODO: Parse tool calls from output
-    return {
-      content: output.trim(),
-      toolCalls: [],
-    };
+  dispose(): void {
+    if (this.instance?.server) {
+      this.logger.log("Shutting down OpenCode server");
+      this.instance.server.close();
+    }
+    this.client = null;
+    this.instance = null;
+    this.initPromise = null;
   }
 }
