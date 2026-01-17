@@ -1,0 +1,107 @@
+# OpenCode Service
+
+Multi-tenant OpenCode-as-a-Service HTTP API. Provides OpenCode capabilities without requiring users to manage infrastructure.
+
+## Features
+
+- Multi-tenant with token-based authentication
+- Stateless and session-based execution modes
+- Custom tools and agents per tenant
+- Predefined tools and agents
+- Real-time streaming responses
+- Provider credential management per tenant
+
+## Prerequisites
+
+- Node.js >= 20.0.0
+- pnpm
+- gitleaks (for security checks)
+
+### Installing gitleaks
+
+```bash
+# macOS
+brew install gitleaks
+
+# Linux - download from releases
+# https://github.com/gitleaks/gitleaks/releases
+```
+
+## Installation
+
+```bash
+pnpm install
+```
+
+## Development
+
+```bash
+# Run in development mode with watch
+pnpm dev
+
+# Run once
+pnpm start
+```
+
+## Scripts
+
+```bash
+# Run tests
+pnpm test
+
+# Run tests in watch mode
+pnpm test:watch
+
+# Lint code
+pnpm lint
+
+# Fix lint issues
+pnpm lint:fix
+
+# Format code
+pnpm format
+
+# Check formatting
+pnpm format:check
+
+# Type check
+pnpm typecheck
+```
+
+## Environment Variables
+
+```bash
+# Required
+ADMIN_TOKENS=admin_token1,admin_token2    # Comma-separated for rotation
+
+# Optional
+PORT=3001
+DATA_DIR=./data
+PREDEFINED_DIR=./predefined
+SESSION_TTL_HOURS=24
+ALLOW_SELF_REGISTRATION=false
+```
+
+## API Documentation
+
+See [docs/opencode-service-design.md](docs/opencode-service-design.md) for full API documentation.
+
+### Quick Start
+
+1. Create a tenant (admin):
+
+```bash
+curl -X POST http://localhost:3001/v1/admin/tenants \
+  -H "Authorization: Bearer admin_token1" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Tenant", "providers": {"anthropic": {"apiKey": "sk-..."}}}'
+```
+
+2. Use the returned token for chat:
+
+```bash
+curl -X POST http://localhost:3001/v1/chat \
+  -H "Authorization: Bearer ocs_mytenant_sk_..." \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello"}]}'
+```
