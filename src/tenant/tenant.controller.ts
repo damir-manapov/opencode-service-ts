@@ -20,7 +20,7 @@ import {
   TenantNotFoundError,
   ToolNotFoundError,
 } from "../errors/index.js";
-import type { TenantService } from "./tenant.service.js";
+import { TenantService } from "./tenant.service.js";
 import type { ModelConfig, ProviderConfig, TenantConfig } from "./tenant.types.js";
 
 interface TenantConfigResponse {
@@ -176,7 +176,7 @@ export class TenantController {
 
   private toConfigResponse(tenant: TenantConfig): TenantConfigResponse {
     const providers: Record<string, { configured: boolean }> = {};
-    for (const [key] of Object.entries(tenant.providers)) {
+    for (const [key] of Object.entries(tenant.providers ?? {})) {
       providers[key] = { configured: true };
     }
 

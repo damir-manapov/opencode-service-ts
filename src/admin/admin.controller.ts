@@ -11,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { AdminAuthGuard } from "../auth/admin-auth.guard.js";
 import { TenantNotFoundError } from "../errors/index.js";
-import type { TenantService } from "../tenant/tenant.service.js";
+import { TenantService } from "../tenant/tenant.service.js";
 import type { CreateTenantInput, TenantConfig } from "../tenant/tenant.types.js";
 
 interface CreateTenantResponse {

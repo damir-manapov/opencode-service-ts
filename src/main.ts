@@ -1,9 +1,14 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
+  // Enable raw body parsing for text/plain
+  app.useBodyParser("text", { type: "text/plain", limit: "10mb" });
   const port = process.env["PORT"] ?? 3001;
   await app.listen(port);
   console.log(`OpenCode Service running on http://localhost:${String(port)}`);
