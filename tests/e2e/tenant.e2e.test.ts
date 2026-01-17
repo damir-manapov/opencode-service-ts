@@ -45,7 +45,11 @@ describe("Tenant API (e2e)", () => {
       });
 
       expect(response.status).toBe(200);
-      const body = response.body as { id: string; name: string; providers: { openai: { configured: boolean } } };
+      const body = response.body as {
+        id: string;
+        name: string;
+        providers: { openai: { configured: boolean } };
+      };
       expect(body.id).toBe(tenantId);
       expect(body.name).toBe("E2E Test Tenant");
       expect(body.providers.openai).toBeDefined();

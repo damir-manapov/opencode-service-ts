@@ -38,7 +38,10 @@ describe("Admin API (e2e)", () => {
       });
 
       expect(response.status).toBe(201);
-      const body = response.body as { tenant: { name: string; id: string; secrets?: unknown }; token: string };
+      const body = response.body as {
+        tenant: { name: string; id: string; secrets?: unknown };
+        token: string;
+      };
       expect(body.tenant).toBeDefined();
       expect(body.tenant.name).toBe("Test Tenant");
       expect(body.tenant.id).toBeDefined();
