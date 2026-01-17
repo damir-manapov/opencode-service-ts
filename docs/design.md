@@ -180,7 +180,9 @@ interface SessionMeta {
 
 ### Session TTL
 
-- Configurable via `SESSION_TTL_HOURS` env (default: 24)
+- Configurable via `SESSION_TTL` env (default: `24h`)
+- Format: `<number><unit>` where unit is `m` (minutes), `h` (hours), or `d` (days)
+- Examples: `30m`, `24h`, `7d`
 - Cleanup: lazy (on access) or scheduled (cron)
 
 ---
@@ -284,7 +286,7 @@ ADMIN_TOKENS=admin_token1,admin_token2    # Comma-separated for rotation
 PORT=3001
 DATA_DIR=./data
 PREDEFINED_DIR=./predefined
-SESSION_TTL_HOURS=24
+SESSION_TTL=24h                            # Format: 30m, 24h, 7d
 ALLOW_SELF_REGISTRATION=false             # Enable POST /v1/register
 ```
 
