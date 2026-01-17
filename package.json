@@ -33,6 +33,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
     "@nestjs/cli": "^11.0.16",
+    "@types/express": "^5.0.6",
     "@types/node": "^25.0.9",
     "typescript": "^5.7.3",
     "vitest": "^4.0.17"
