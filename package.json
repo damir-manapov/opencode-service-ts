@@ -13,11 +13,12 @@
     "start": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "biome lint .",
-    "lint:fix": "biome lint --write .",
+    "lint": "biome lint --write .",
+    "lint:check": "biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check": "biome check --write .",
+    "check:only": "biome check .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

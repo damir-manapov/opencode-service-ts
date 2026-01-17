@@ -2,7 +2,7 @@
 set -e
 
 echo "Running biome check (format + lint)..."
-pnpm check
+pnpm run check
 
 echo "Running type check..."
 pnpm typecheck
