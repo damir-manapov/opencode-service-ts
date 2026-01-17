@@ -5,7 +5,7 @@ echo "Checking for secrets with gitleaks..."
 gitleaks git --verbose
 
 echo "Checking for outdated dependencies..."
-pnpm outdated || true
+pnpm outdated
 
 echo "Checking for vulnerabilities..."
 pnpm audit --audit-level=moderate
