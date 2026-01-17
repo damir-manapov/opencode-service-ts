@@ -84,7 +84,7 @@ ALLOW_SELF_REGISTRATION=false
 
 ## API Documentation
 
-See [docs/opencode-service-design.md](docs/opencode-service-design.md) for full API documentation.
+See [docs/design.md](docs/design.md) for full API documentation.
 
 ### Quick Start
 
