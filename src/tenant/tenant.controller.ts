@@ -1,18 +1,25 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Put,
   Req,
   UseGuards,
 } from "@nestjs/common";
 import { type AuthenticatedRequest, TenantAuthGuard } from "../auth/tenant-auth.guard.js";
+import {
+  AgentNotFoundError,
+  InvalidAgentNameError,
+  InvalidSecretNameError,
+  InvalidToolNameError,
+  SecretNotFoundError,
+  TenantNotFoundError,
+  ToolNotFoundError,
+} from "../errors/index.js";
 import type { TenantService } from "./tenant.service.js";
 import type { ModelConfig, ProviderConfig, TenantConfig } from "./tenant.types.js";
 
@@ -54,7 +61,7 @@ export class TenantController {
       defaultModel: input.defaultModel,
     });
     if (!updated) {
-      throw new NotFoundException("Tenant not found");
+      throw new TenantNotFoundError(req.tenant.id);
     }
     return this.toConfigResponse(updated);
   }
@@ -70,7 +77,7 @@ export class TenantController {
   async getTool(@Req() req: AuthenticatedRequest, @Param("name") name: string): Promise<string> {
     const tool = await this.tenantService.getTool(req.tenant.id, name);
     if (!tool) {
-      throw new NotFoundException(`Tool ${name} not found`);
+      throw new ToolNotFoundError(name);
     }
     return tool;
   }
@@ -83,7 +90,7 @@ export class TenantController {
     @Body() body: string,
   ): Promise<{ name: string }> {
     if (!name.match(/^[a-z0-9-]+$/)) {
-      throw new BadRequestException("Tool name must be lowercase alphanumeric with dashes");
+      throw new InvalidToolNameError();
     }
     await this.tenantService.saveTool(req.tenant.id, name, body);
     return { name };
@@ -94,7 +101,7 @@ export class TenantController {
   async deleteTool(@Req() req: AuthenticatedRequest, @Param("name") name: string): Promise<void> {
     const deleted = await this.tenantService.deleteTool(req.tenant.id, name);
     if (!deleted) {
-      throw new NotFoundException(`Tool ${name} not found`);
+      throw new ToolNotFoundError(name);
     }
   }
 
@@ -109,7 +116,7 @@ export class TenantController {
   async getAgent(@Req() req: AuthenticatedRequest, @Param("name") name: string): Promise<string> {
     const agent = await this.tenantService.getAgent(req.tenant.id, name);
     if (!agent) {
-      throw new NotFoundException(`Agent ${name} not found`);
+      throw new AgentNotFoundError(name);
     }
     return agent;
   }
@@ -122,7 +129,7 @@ export class TenantController {
     @Body() body: string,
   ): Promise<{ name: string }> {
     if (!name.match(/^[a-z0-9-]+$/)) {
-      throw new BadRequestException("Agent name must be lowercase alphanumeric with dashes");
+      throw new InvalidAgentNameError();
     }
     await this.tenantService.saveAgent(req.tenant.id, name, body);
     return { name };
@@ -133,7 +140,7 @@ export class TenantController {
   async deleteAgent(@Req() req: AuthenticatedRequest, @Param("name") name: string): Promise<void> {
     const deleted = await this.tenantService.deleteAgent(req.tenant.id, name);
     if (!deleted) {
-      throw new NotFoundException(`Agent ${name} not found`);
+      throw new AgentNotFoundError(name);
     }
   }
 
@@ -152,7 +159,7 @@ export class TenantController {
     @Body() body: { value: string },
   ): Promise<{ name: string }> {
     if (!name.match(/^[A-Z0-9_]+$/)) {
-      throw new BadRequestException("Secret name must be uppercase alphanumeric with underscores");
+      throw new InvalidSecretNameError();
     }
     await this.tenantService.setSecret(req.tenant.id, name, body.value);
     return { name };
@@ -163,7 +170,7 @@ export class TenantController {
   async deleteSecret(@Req() req: AuthenticatedRequest, @Param("name") name: string): Promise<void> {
     const deleted = await this.tenantService.deleteSecret(req.tenant.id, name);
     if (!deleted) {
-      throw new NotFoundException(`Secret ${name} not found`);
+      throw new SecretNotFoundError(name);
     }
   }
 

@@ -1,10 +1,6 @@
-import {
-  type CanActivate,
-  type ExecutionContext,
-  Injectable,
-  UnauthorizedException,
-} from "@nestjs/common";
+import { type CanActivate, type ExecutionContext, Injectable } from "@nestjs/common";
 import type { Request } from "express";
+import { TenantNotFoundError, TokenInvalidError } from "../errors/index.js";
 import type { TenantService } from "../tenant/tenant.service.js";
 import type { TenantConfig } from "../tenant/tenant.types.js";
 import { type ParsedToken, parseToken } from "./token.utils.js";
@@ -26,16 +22,16 @@ export class TenantAuthGuard implements CanActivate {
 
     const parsed = parseToken(authHeader);
     if (!parsed) {
-      throw new UnauthorizedException("Invalid or missing token");
+      throw new TokenInvalidError();
     }
 
     const tenant = await this.tenantService.getTenant(parsed.tenantId);
     if (!tenant) {
-      throw new UnauthorizedException("Tenant not found");
+      throw new TenantNotFoundError(parsed.tenantId);
     }
 
     if (!this.validateToken(tenant.tokens, parsed)) {
-      throw new UnauthorizedException("Invalid token");
+      throw new TokenInvalidError();
     }
 
     (request as AuthenticatedRequest).tenant = {

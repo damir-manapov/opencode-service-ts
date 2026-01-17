@@ -1,11 +1,7 @@
-import {
-  type CanActivate,
-  type ExecutionContext,
-  Injectable,
-  UnauthorizedException,
-} from "@nestjs/common";
+import { type CanActivate, type ExecutionContext, Injectable } from "@nestjs/common";
 import type { Request } from "express";
 import type { ConfigService } from "../config/config.service.js";
+import { AdminTokenInvalidError, AdminTokenNotConfiguredError } from "../errors/index.js";
 import { parseAdminToken } from "./token.utils.js";
 
 @Injectable()
@@ -18,16 +14,16 @@ export class AdminAuthGuard implements CanActivate {
 
     const token = parseAdminToken(authHeader);
     if (!token) {
-      throw new UnauthorizedException("Invalid or missing admin token");
+      throw new AdminTokenInvalidError();
     }
 
     const adminTokens = this.configService.get("adminTokens");
     if (adminTokens.length === 0) {
-      throw new UnauthorizedException("No admin tokens configured");
+      throw new AdminTokenNotConfiguredError();
     }
 
     if (!adminTokens.includes(token)) {
-      throw new UnauthorizedException("Invalid admin token");
+      throw new AdminTokenInvalidError();
     }
 
     return true;

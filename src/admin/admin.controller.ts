@@ -5,12 +5,12 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Post,
   UseGuards,
 } from "@nestjs/common";
 import { AdminAuthGuard } from "../auth/admin-auth.guard.js";
+import { TenantNotFoundError } from "../errors/index.js";
 import type { TenantService } from "../tenant/tenant.service.js";
 import type { CreateTenantInput, TenantConfig } from "../tenant/tenant.types.js";
 
@@ -54,7 +54,7 @@ export class AdminController {
   async getTenant(@Param("id") id: string): Promise<TenantResponse> {
     const tenant = await this.tenantService.getTenant(id);
     if (!tenant) {
-      throw new NotFoundException(`Tenant ${id} not found`);
+      throw new TenantNotFoundError(id);
     }
     return {
       tenant: this.sanitizeTenantWithTokens(tenant),
@@ -66,7 +66,7 @@ export class AdminController {
   async deleteTenant(@Param("id") id: string): Promise<void> {
     const deleted = await this.tenantService.deleteTenant(id);
     if (!deleted) {
-      throw new NotFoundException(`Tenant ${id} not found`);
+      throw new TenantNotFoundError(id);
     }
   }
 
