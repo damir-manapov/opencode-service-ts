@@ -52,20 +52,29 @@ pnpm test
 # Run tests in watch mode
 pnpm test:watch
 
-# Lint code
+# Lint and format (auto-fix)
+pnpm check
+
+# Lint and format (check only, no fix)
+pnpm check:only
+
+# Lint only (auto-fix)
 pnpm lint
 
-# Fix lint issues
-pnpm lint:fix
-
-# Format code
+# Format only (auto-fix)
 pnpm format
-
-# Check formatting
-pnpm format:check
 
 # Type check
 pnpm typecheck
+
+# Run all checks (biome, types, tests)
+./check.sh
+
+# Run health checks (gitleaks, outdated deps, vulnerabilities)
+./health.sh
+
+# Run everything
+./all-checks.sh
 ```
 
 ## Environment Variables
