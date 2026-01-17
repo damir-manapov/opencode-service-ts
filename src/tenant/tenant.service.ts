@@ -18,7 +18,7 @@ export class TenantService implements OnModuleInit {
   }
 
   async createTenant(input: CreateTenantInput): Promise<{ tenant: TenantConfig; token: string }> {
-    const id = input.id ?? this.generateId();
+    const id = this.generateId();
     const token = this.generateToken(id);
     const now = new Date().toISOString();
 

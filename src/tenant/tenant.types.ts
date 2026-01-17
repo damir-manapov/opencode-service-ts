@@ -19,7 +19,6 @@ export interface TenantConfig {
 }
 
 export interface CreateTenantInput {
-  id?: string;
   name: string;
   providers: Record<string, ProviderConfig>;
   defaultModel?: ModelConfig;
