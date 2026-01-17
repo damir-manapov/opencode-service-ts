@@ -39,7 +39,10 @@ pnpm install
 # Run in development mode with watch
 pnpm dev
 
-# Run once
+# Build for production
+pnpm build
+
+# Run production build
 pnpm start
 ```
 
