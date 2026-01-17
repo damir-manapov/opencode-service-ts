@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ConfigService } from "../../src/config/config.service.js";
+import { CONFIG_DEFAULTS, ConfigService } from "../../src/config/config.service.js";
 
 describe("ConfigService", () => {
   const originalEnv = process.env;
@@ -14,10 +14,10 @@ describe("ConfigService", () => {
   });
 
   describe("port", () => {
-    it("should default to 3001", () => {
+    it("should default to CONFIG_DEFAULTS.PORT", () => {
       delete process.env["PORT"];
       const config = new ConfigService();
-      expect(config.get("port")).toBe(3001);
+      expect(config.get("port")).toBe(CONFIG_DEFAULTS.PORT);
     });
 
     it("should parse PORT from env", () => {
@@ -26,18 +26,18 @@ describe("ConfigService", () => {
       expect(config.get("port")).toBe(8080);
     });
 
-    it("should default to 3001 for invalid PORT", () => {
+    it("should default to CONFIG_DEFAULTS.PORT for invalid PORT", () => {
       process.env["PORT"] = "invalid";
       const config = new ConfigService();
-      expect(config.get("port")).toBe(3001);
+      expect(config.get("port")).toBe(CONFIG_DEFAULTS.PORT);
     });
   });
 
   describe("sessionTtl", () => {
-    it("should default to 24h in milliseconds", () => {
+    it("should default to CONFIG_DEFAULTS.SESSION_TTL_MS", () => {
       delete process.env["SESSION_TTL"];
       const config = new ConfigService();
-      expect(config.get("sessionTtl")).toBe(24 * 60 * 60 * 1000);
+      expect(config.get("sessionTtl")).toBe(CONFIG_DEFAULTS.SESSION_TTL_MS);
     });
 
     it("should parse minutes", () => {
@@ -58,10 +58,10 @@ describe("ConfigService", () => {
       expect(config.get("sessionTtl")).toBe(7 * 24 * 60 * 60 * 1000);
     });
 
-    it("should default to 24h for invalid format", () => {
+    it("should default to CONFIG_DEFAULTS.SESSION_TTL_MS for invalid format", () => {
       process.env["SESSION_TTL"] = "invalid";
       const config = new ConfigService();
-      expect(config.get("sessionTtl")).toBe(24 * 60 * 60 * 1000);
+      expect(config.get("sessionTtl")).toBe(CONFIG_DEFAULTS.SESSION_TTL_MS);
     });
   });
 
@@ -116,8 +116,8 @@ describe("ConfigService", () => {
       delete process.env["DATA_DIR"];
       delete process.env["PREDEFINED_DIR"];
       const config = new ConfigService();
-      expect(config.get("dataDir")).toBe("./data");
-      expect(config.get("predefinedDir")).toBe("./predefined");
+      expect(config.get("dataDir")).toBe(CONFIG_DEFAULTS.DATA_DIR);
+      expect(config.get("predefinedDir")).toBe(CONFIG_DEFAULTS.PREDEFINED_DIR);
     });
 
     it("should parse from env", () => {
