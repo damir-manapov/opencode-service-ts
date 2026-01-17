@@ -1,0 +1,7 @@
+# Example tokens in documentation - not real secrets
+23f7f94f51f06c24492c82a51396cf7745ef1941:README.md:curl-auth-header:94
+23f7f94f51f06c24492c82a51396cf7745ef1941:README.md:curl-auth-header:103
+23f7f94f51f06c24492c82a51396cf7745ef1941:docs/opencode-service-design.md:generic-api-key:440
+23f7f94f51f06c24492c82a51396cf7745ef1941:docs/opencode-service-design.md:curl-auth-header:425
+23f7f94f51f06c24492c82a51396cf7745ef1941:docs/opencode-service-design.md:curl-auth-header:446
+23f7f94f51f06c24492c82a51396cf7745ef1941:docs/opencode-service-design.md:curl-auth-header:460

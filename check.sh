@@ -1,11 +1,8 @@
 #!/bin/bash
 set -e
 
-echo "Running formatting..."
-pnpm format
-
-echo "Running lint..."
-pnpm lint
+echo "Running biome check (format + lint)..."
+pnpm check
 
 echo "Running type check..."
 pnpm typecheck
