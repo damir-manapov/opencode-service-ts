@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,21 +11,24 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { AdminAuthGuard } from "../auth/admin-auth.guard.js";
+import { formatZodError } from "../common/validation.utils.js";
 import { TenantNotFoundError } from "../errors/index.js";
 import { TenantService } from "../tenant/tenant.service.js";
-import type { CreateTenantInput, TenantConfig } from "../tenant/tenant.types.js";
+import type { SanitizedTenant, SanitizedTenantWithTokens } from "../tenant/tenant.utils.js";
+import { sanitizeTenant, sanitizeTenantWithTokens } from "../tenant/tenant.utils.js";
+import { CreateTenantInputSchema } from "./admin.schema.js";
 
 interface CreateTenantResponse {
-  tenant: Omit<TenantConfig, "tokens" | "secrets">;
+  tenant: SanitizedTenant;
   token: string;
 }
 
 interface TenantListResponse {
-  tenants: Omit<TenantConfig, "tokens" | "secrets">[];
+  tenants: SanitizedTenant[];
 }
 
 interface TenantResponse {
-  tenant: Omit<TenantConfig, "secrets">;
+  tenant: SanitizedTenantWithTokens;
 }
 
 @Controller("v1/admin/tenants")
@@ -34,10 +38,15 @@ export class AdminController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createTenant(@Body() input: CreateTenantInput): Promise<CreateTenantResponse> {
-    const { tenant, token } = await this.tenantService.createTenant(input);
+  async createTenant(@Body() body: unknown): Promise<CreateTenantResponse> {
+    const parseResult = CreateTenantInputSchema.safeParse(body);
+    if (!parseResult.success) {
+      throw new BadRequestException(formatZodError(parseResult.error));
+    }
+
+    const { tenant, token } = await this.tenantService.createTenant(parseResult.data);
     return {
-      tenant: this.sanitizeTenant(tenant),
+      tenant: sanitizeTenant(tenant),
       token,
     };
   }
@@ -46,7 +55,7 @@ export class AdminController {
   async listTenants(): Promise<TenantListResponse> {
     const tenants = await this.tenantService.listTenants();
     return {
-      tenants: tenants.map((t) => this.sanitizeTenant(t)),
+      tenants: tenants.map((t) => sanitizeTenant(t)),
     };
   }
 
@@ -57,7 +66,7 @@ export class AdminController {
       throw new TenantNotFoundError(id);
     }
     return {
-      tenant: this.sanitizeTenantWithTokens(tenant),
+      tenant: sanitizeTenantWithTokens(tenant),
     };
   }
 
@@ -68,15 +77,5 @@ export class AdminController {
     if (!deleted) {
       throw new TenantNotFoundError(id);
     }
-  }
-
-  private sanitizeTenant(tenant: TenantConfig): Omit<TenantConfig, "tokens" | "secrets"> {
-    const { tokens: _tokens, secrets: _secrets, ...rest } = tenant;
-    return rest;
-  }
-
-  private sanitizeTenantWithTokens(tenant: TenantConfig): Omit<TenantConfig, "secrets"> {
-    const { secrets: _secrets, ...rest } = tenant;
-    return rest;
   }
 }

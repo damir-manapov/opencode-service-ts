@@ -11,9 +11,17 @@ describe("Admin API (e2e)", () => {
   });
 
   describe("POST /v1/admin/tenants", () => {
+    let createdTenantId: string | null = null;
+
+    afterAll(async () => {
+      if (createdTenantId) {
+        await client.deleteTenant(createdTenantId);
+      }
+    });
+
     it("should reject request without admin token", async () => {
       const response = await httpRequest("POST", "/v1/admin/tenants", {
-        body: { name: "Test Tenant" },
+        body: { name: "test-tenant" },
       });
 
       expect(response.status).toBe(401);
@@ -25,16 +33,17 @@ describe("Admin API (e2e)", () => {
     it("should reject request with invalid admin token", async () => {
       const response = await httpRequest("POST", "/v1/admin/tenants", {
         token: "wrong-token",
-        body: { name: "Test Tenant" },
+        body: { name: "test-tenant" },
       });
 
       expect(response.status).toBe(401);
     });
 
     it("should create a new tenant", async () => {
+      const tenantName = `test-tenant-${Math.random().toString(36).slice(2, 8)}`;
       const response = await httpRequest("POST", "/v1/admin/tenants", {
         token: adminToken,
-        body: { name: "Test Tenant" },
+        body: { name: tenantName },
       });
 
       expect(response.status).toBe(201);
@@ -43,15 +52,27 @@ describe("Admin API (e2e)", () => {
         token: string;
       };
       expect(body.tenant).toBeDefined();
-      expect(body.tenant.name).toBe("Test Tenant");
+      expect(body.tenant.name).toBe(tenantName);
       expect(body.tenant.id).toBeDefined();
       expect(body.token).toBeDefined();
       // Should not expose secrets
       expect(body.tenant.secrets).toBeUndefined();
+      createdTenantId = body.tenant.id;
     });
   });
 
   describe("GET /v1/admin/tenants", () => {
+    let tenantId: string;
+
+    beforeAll(async () => {
+      const result = await client.createTenant("list-test-tenant");
+      tenantId = result.tenant.id;
+    });
+
+    afterAll(async () => {
+      await client.deleteTenant(tenantId);
+    });
+
     it("should list all tenants", async () => {
       const response = await httpRequest("GET", "/v1/admin/tenants", {
         token: adminToken,
@@ -67,10 +88,12 @@ describe("Admin API (e2e)", () => {
 
   describe("GET /v1/admin/tenants/:id", () => {
     let tenantId: string;
+    let tenantName: string;
 
     beforeAll(async () => {
-      const result = await client.createTenant("Tenant for GET test");
+      const result = await client.createTenant("tenant-for-get-test");
       tenantId = result.tenant.id;
+      tenantName = result.tenant.name;
     });
 
     afterAll(async () => {
@@ -85,7 +108,7 @@ describe("Admin API (e2e)", () => {
       expect(response.status).toBe(200);
       const body = response.body as { tenant: { id: string; name: string; tokens: unknown } };
       expect(body.tenant.id).toBe(tenantId);
-      expect(body.tenant.name).toBe("Tenant for GET test");
+      expect(body.tenant.name).toBe(tenantName);
       expect(body.tenant.tokens).toBeDefined();
     });
 
@@ -103,7 +126,7 @@ describe("Admin API (e2e)", () => {
     let tenantId: string;
 
     beforeAll(async () => {
-      const result = await client.createTenant("Tenant for DELETE test");
+      const result = await client.createTenant("tenant-for-delete-test");
       tenantId = result.tenant.id;
     });
 

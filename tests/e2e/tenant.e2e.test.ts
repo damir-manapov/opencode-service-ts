@@ -5,6 +5,7 @@ describe("Tenant API (e2e)", () => {
   let client: TestClient;
   let tenantToken: string;
   let tenantId: string;
+  let tenantName: string;
 
   beforeAll(async () => {
     client = new TestClient();
@@ -15,6 +16,7 @@ describe("Tenant API (e2e)", () => {
     });
 
     tenantId = result.tenant.id;
+    tenantName = result.tenant.name;
     tenantToken = result.token;
   });
 
@@ -51,7 +53,7 @@ describe("Tenant API (e2e)", () => {
         providers: { openai: { configured: boolean } };
       };
       expect(body.id).toBe(tenantId);
-      expect(body.name).toBe("E2E Test Tenant");
+      expect(body.name).toBe(tenantName);
       expect(body.providers.openai).toBeDefined();
       expect(body.providers.openai.configured).toBe(true);
     });

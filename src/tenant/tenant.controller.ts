@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -11,6 +12,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { type AuthenticatedRequest, TenantAuthGuard } from "../auth/tenant-auth.guard.js";
+import { formatZodError } from "../common/validation.utils.js";
 import {
   AgentNotFoundError,
   InvalidAgentNameError,
@@ -20,8 +22,14 @@ import {
   TenantNotFoundError,
   ToolNotFoundError,
 } from "../errors/index.js";
+import {
+  ResourceNameSchema,
+  SecretNameSchema,
+  SecretValueSchema,
+  UpdateConfigInputSchema,
+} from "./tenant.schema.js";
 import { TenantService } from "./tenant.service.js";
-import type { ModelConfig, ProviderConfig, TenantConfig } from "./tenant.types.js";
+import type { ModelConfig, TenantConfig } from "./tenant.types.js";
 
 interface TenantConfigResponse {
   id: string;
@@ -31,12 +39,6 @@ interface TenantConfigResponse {
   tools: string[];
   agents: string[];
   secrets: string[];
-}
-
-interface UpdateConfigInput {
-  name?: string;
-  providers?: Record<string, ProviderConfig>;
-  defaultModel?: ModelConfig;
 }
 
 @Controller("v1/tenant")
@@ -53,8 +55,14 @@ export class TenantController {
   @Put("config")
   async updateConfig(
     @Req() req: AuthenticatedRequest,
-    @Body() input: UpdateConfigInput,
+    @Body() body: unknown,
   ): Promise<TenantConfigResponse> {
+    const parseResult = UpdateConfigInputSchema.safeParse(body);
+    if (!parseResult.success) {
+      throw new BadRequestException(formatZodError(parseResult.error));
+    }
+    const input = parseResult.data;
+
     const updated = await this.tenantService.updateTenant(req.tenant.id, {
       name: input.name,
       providers: input.providers,
@@ -89,7 +97,8 @@ export class TenantController {
     @Param("name") name: string,
     @Body() body: string,
   ): Promise<{ name: string }> {
-    if (!name.match(/^[a-z0-9-]+$/)) {
+    const parseResult = ResourceNameSchema.safeParse(name);
+    if (!parseResult.success) {
       throw new InvalidToolNameError();
     }
     await this.tenantService.saveTool(req.tenant.id, name, body);
@@ -128,7 +137,8 @@ export class TenantController {
     @Param("name") name: string,
     @Body() body: string,
   ): Promise<{ name: string }> {
-    if (!name.match(/^[a-z0-9-]+$/)) {
+    const parseResult = ResourceNameSchema.safeParse(name);
+    if (!parseResult.success) {
       throw new InvalidAgentNameError();
     }
     await this.tenantService.saveAgent(req.tenant.id, name, body);
@@ -156,12 +166,17 @@ export class TenantController {
   async putSecret(
     @Req() req: AuthenticatedRequest,
     @Param("name") name: string,
-    @Body() body: { value: string },
+    @Body() body: unknown,
   ): Promise<{ name: string }> {
-    if (!name.match(/^[A-Z0-9_]+$/)) {
+    const nameResult = SecretNameSchema.safeParse(name);
+    if (!nameResult.success) {
       throw new InvalidSecretNameError();
     }
-    await this.tenantService.setSecret(req.tenant.id, name, body.value);
+    const bodyResult = SecretValueSchema.safeParse(body);
+    if (!bodyResult.success) {
+      throw new BadRequestException(formatZodError(bodyResult.error));
+    }
+    await this.tenantService.setSecret(req.tenant.id, name, bodyResult.data.value);
     return { name };
   }
 
