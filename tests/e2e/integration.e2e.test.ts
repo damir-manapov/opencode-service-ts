@@ -7,7 +7,7 @@
  * If not set, tests will fail with a clear error message.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getTestConfig, httpRequest } from "./setup.js";
+import { httpRequest, TestClient } from "./setup.js";
 
 const OPENROUTER_API_KEY = process.env["E2E_OPENROUTER_API_KEY"];
 
@@ -21,38 +21,26 @@ function requireApiKey(): void {
 }
 
 describe("OpenCode Integration (real execution)", () => {
-  const config = getTestConfig();
+  let client: TestClient;
   let tenantToken: string;
   let tenantId: string;
 
   beforeAll(async () => {
     requireApiKey();
 
-    // Create a tenant with OpenRouter provider
-    const response = await httpRequest("POST", "/v1/admin/tenants", {
-      token: config.adminToken,
-      body: {
-        name: "Integration Test Tenant",
-        providers: {
-          openrouter: { apiKey: OPENROUTER_API_KEY },
-        },
+    client = new TestClient();
+    const result = await client.createTenant("Integration Test Tenant", {
+      providers: {
+        openrouter: { apiKey: OPENROUTER_API_KEY },
       },
     });
-
-    if (response.status !== 201) {
-      throw new Error(`Failed to create tenant: ${response.status} ${response.text}`);
-    }
-
-    const data = response.body as { tenant: { id: string }; token: string };
-    tenantId = data.tenant.id;
-    tenantToken = data.token;
+    tenantId = result.tenant.id;
+    tenantToken = result.token;
   });
 
   afterAll(async () => {
     if (tenantId) {
-      await httpRequest("DELETE", `/v1/admin/tenants/${tenantId}`, {
-        token: config.adminToken,
-      });
+      await client.deleteTenant(tenantId);
     }
   });
 

@@ -1,76 +1,29 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getTestConfig, httpRequest, type TestConfig } from "./setup.js";
+import { httpRequest, TestClient } from "./setup.js";
 
 describe("Chat Completions API (OpenAI-compatible)", () => {
-  let config: TestConfig;
+  let client: TestClient;
   let tenantToken: string;
+  let tenantId: string;
 
   beforeAll(async () => {
-    config = getTestConfig();
-
-    // Create a test tenant for chat tests
-    const response = await httpRequest("POST", "/v1/admin/tenants", {
-      token: config.adminToken,
-      body: {
-        name: "Chat Test Tenant",
-        providers: {
-          anthropic: { apiKey: "sk-ant-test-key" },
-        },
-        defaultModel: {
-          providerId: "anthropic",
-          modelId: "claude-sonnet",
-        },
+    client = new TestClient();
+    const result = await client.createTenant("Chat Test Tenant", {
+      providers: {
+        anthropic: { apiKey: "sk-ant-test-key" },
+      },
+      defaultModel: {
+        providerId: "anthropic",
+        modelId: "claude-sonnet",
       },
     });
-
-    if (response.status === 201) {
-      const data = response.body as { id: string; token: string };
-      tenantToken = data.token;
-    } else if (response.status === 409) {
-      // Tenant exists, delete and recreate
-      const listResponse = await httpRequest("GET", "/v1/admin/tenants", {
-        token: config.adminToken,
-      });
-      const tenants = (listResponse.body as { tenants: Array<{ id: string }> }).tenants;
-      const chatTenant = tenants.find((t) => t.id.includes("chat"));
-
-      if (chatTenant) {
-        await httpRequest("DELETE", `/v1/admin/tenants/${chatTenant.id}`, {
-          token: config.adminToken,
-        });
-      }
-
-      const retryResponse = await httpRequest("POST", "/v1/admin/tenants", {
-        token: config.adminToken,
-        body: {
-          name: "Chat Test Tenant",
-          providers: {
-            anthropic: { apiKey: "sk-ant-test-key" },
-          },
-          defaultModel: {
-            providerId: "anthropic",
-            modelId: "claude-sonnet",
-          },
-        },
-      });
-
-      const data = retryResponse.body as { id: string; token: string };
-      tenantToken = data.token;
-    }
+    tenantId = result.tenant.id;
+    tenantToken = result.token;
   });
 
   afterAll(async () => {
-    // Cleanup: delete the test tenant
-    const listResponse = await httpRequest("GET", "/v1/admin/tenants", {
-      token: config.adminToken,
-    });
-    const tenants = (listResponse.body as { tenants: Array<{ id: string }> }).tenants;
-    const chatTenant = tenants.find((t) => t.id.includes("chat"));
-
-    if (chatTenant) {
-      await httpRequest("DELETE", `/v1/admin/tenants/${chatTenant.id}`, {
-        token: config.adminToken,
-      });
+    if (tenantId) {
+      await client.deleteTenant(tenantId);
     }
   });
 

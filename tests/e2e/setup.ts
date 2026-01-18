@@ -103,9 +103,16 @@ export class TestClient {
 
   // Admin API helpers
   async createTenant(
-    name: string,
-    options?: { providers?: Record<string, unknown> },
+    baseName: string,
+    options?: {
+      providers?: Record<string, unknown>;
+      defaultModel?: { providerId: string; modelId: string };
+    },
   ): Promise<{ tenant: { id: string; name: string }; token: string }> {
+    // Auto-generate unique name to avoid conflicts in parallel test runs
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const name = `${baseName}-${suffix}`;
+
     const res = await httpRequest("POST", "/v1/admin/tenants", {
       token: this.adminToken,
       body: { name, ...options },
