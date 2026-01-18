@@ -1,7 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
+import * as os from "node:os";
 import * as path from "node:path";
+import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { createOpencode } from "@opencode-ai/sdk";
 import type {
   ChatMessage,
@@ -10,13 +12,16 @@ import type {
   StreamChunk,
 } from "../chat/chat.types.js";
 import { ConfigService } from "../config/config.service.js";
-import type { WorkspaceConfig } from "../workspace/workspace.types.js";
-import { WorkspaceService } from "../workspace/workspace.service.js";
+import type {
+  AgentDefinition,
+  ToolDefinition,
+  WorkspaceConfig,
+} from "../workspace/workspace.types.js";
 
 type OpencodeInstance = Awaited<ReturnType<typeof createOpencode>>;
 type OpencodeClient = OpencodeInstance["client"];
 
-interface TenantInstance {
+interface PooledInstance {
   instance: OpencodeInstance;
   port: number;
   workspacePath: string;
@@ -39,17 +44,16 @@ export class OpencodeExecutorService implements OnModuleDestroy {
   private readonly hostname = "127.0.0.1";
   private readonly timeout = 30000;
   private readonly idleTimeoutMs: number;
+  private readonly baseDir: string;
   private nextPort = 14096;
 
-  /** Map of tenantId -> running OpenCode instance */
-  private readonly instances = new Map<string, TenantInstance>();
+  /** Map of instanceKey (tenantId:toolHash) -> running OpenCode instance */
+  private readonly instances = new Map<string, PooledInstance>();
 
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly workspaceService: WorkspaceService,
-  ) {
+  constructor(private readonly configService: ConfigService) {
     this.idleTimeoutMs = this.configService.get("idleTimeout");
-    this.logger.log(`Idle timeout: ${this.idleTimeoutMs / 1000}s`);
+    this.baseDir = path.join(os.tmpdir(), "opencode-service");
+    this.logger.log(`Idle timeout: ${this.idleTimeoutMs / 1000}s, base dir: ${this.baseDir}`);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -58,30 +62,30 @@ export class OpencodeExecutorService implements OnModuleDestroy {
 
   /**
    * Execute OpenCode with the given workspace config and messages
-   * Uses per-tenant instance pooling with idle timeout
-   * Manages workspace creation and lifecycle internally
+   * Pools instances by tenantId + tool configuration hash
    */
   async execute(options: ExecuteOptions): Promise<ExecutorResult> {
     const { tenantId, workspaceConfig, messages, model, providerCredentials } = options;
 
-    // Get or create instance (creates workspace if needed)
-    const tenantInstance = await this.getOrCreateInstance(tenantId, workspaceConfig);
-    const client = tenantInstance.instance.client;
+    // Get or create instance based on tenant + tool hash
+    const pooledInstance = await this.getOrCreateInstance(tenantId, workspaceConfig);
+    const client = pooledInstance.instance.client;
 
     // Update last used and reset idle timer
-    this.touchInstance(tenantId);
+    const instanceKey = this.computeInstanceKey(tenantId, workspaceConfig);
+    this.touchInstance(instanceKey);
 
     try {
       // Set provider credentials via OpenCode auth API
       if (providerCredentials) {
-        await this.setProviderCredentials(client, providerCredentials, tenantInstance.workspacePath);
+        await this.setProviderCredentials(client, providerCredentials, pooledInstance.workspacePath);
       }
 
       const prompt = this.buildPrompt(messages);
       const providerID = model?.providerId ?? "anthropic";
       const modelID = model?.modelId ?? "claude-sonnet-4-20250514";
 
-      this.logger.log(`Executing: ${providerID}/${modelID} for tenant ${tenantId}`);
+      this.logger.log(`Executing: ${providerID}/${modelID} for ${instanceKey}`);
 
       // Create session
       const createResponse = await client.session.create({
@@ -169,8 +173,9 @@ export class OpencodeExecutorService implements OnModuleDestroy {
       }
     } catch (error) {
       // On error, shutdown this instance to ensure clean state next time
-      this.logger.warn(`Error for tenant ${tenantId}, shutting down instance`);
-      await this.shutdownInstance(tenantId);
+      const instanceKey = this.computeInstanceKey(tenantId, workspaceConfig);
+      this.logger.warn(`Error for ${instanceKey}, shutting down instance`);
+      await this.shutdownInstance(instanceKey);
       throw error;
     }
   }
@@ -191,25 +196,36 @@ export class OpencodeExecutorService implements OnModuleDestroy {
   }
 
   /**
-   * Shutdown instance for a specific tenant (e.g., on tenant deletion)
+   * Shutdown instance by key (e.g., on error or idle timeout)
    */
-  async shutdownInstance(tenantId: string): Promise<void> {
-    const tenantInstance = this.instances.get(tenantId);
-    if (tenantInstance) {
-      if (tenantInstance.idleTimer) {
-        clearTimeout(tenantInstance.idleTimer);
+  async shutdownInstance(instanceKey: string): Promise<void> {
+    const pooledInstance = this.instances.get(instanceKey);
+    if (pooledInstance) {
+      if (pooledInstance.idleTimer) {
+        clearTimeout(pooledInstance.idleTimer);
       }
-      this.logger.log(`Shutting down OpenCode for tenant ${tenantId}`);
-      tenantInstance.instance.server.close();
-      this.instances.delete(tenantId);
+      this.logger.log(`Shutting down OpenCode instance: ${instanceKey}`);
+      pooledInstance.instance.server.close();
+      this.instances.delete(instanceKey);
 
       // Cleanup workspace directory
       try {
-        await fs.rm(tenantInstance.workspacePath, { recursive: true, force: true });
-        this.logger.debug(`Cleaned up workspace: ${tenantInstance.workspacePath}`);
+        await fs.rm(pooledInstance.workspacePath, { recursive: true, force: true });
+        this.logger.debug(`Cleaned up workspace: ${pooledInstance.workspacePath}`);
       } catch (err) {
-        this.logger.warn(`Failed to cleanup workspace: ${tenantInstance.workspacePath}`, err);
+        this.logger.warn(`Failed to cleanup workspace: ${pooledInstance.workspacePath}`, err);
       }
+    }
+  }
+
+  /**
+   * Shutdown all instances for a tenant
+   */
+  async shutdownTenant(tenantId: string): Promise<void> {
+    const prefix = `${tenantId}:`;
+    const keysToShutdown = [...this.instances.keys()].filter((k) => k.startsWith(prefix));
+    for (const key of keysToShutdown) {
+      await this.shutdownInstance(key);
     }
   }
 
@@ -218,138 +234,162 @@ export class OpencodeExecutorService implements OnModuleDestroy {
    */
   private async shutdownAll(): Promise<void> {
     this.logger.log(`Shutting down all OpenCode instances (${this.instances.size} active)`);
-    for (const tenantId of this.instances.keys()) {
-      await this.shutdownInstance(tenantId);
+    for (const key of this.instances.keys()) {
+      await this.shutdownInstance(key);
     }
   }
 
   /**
-   * Get existing instance or create new one for tenant
-   * Creates workspace on first request, syncs content on subsequent requests
+   * Compute instance key from tenant + tool configuration
+   */
+  private computeInstanceKey(tenantId: string, config: WorkspaceConfig): string {
+    const fingerprint = {
+      tools: config.tools.map((t) => t.name).sort(),
+    };
+    const hash = createHash("sha256")
+      .update(JSON.stringify(fingerprint))
+      .digest("hex")
+      .slice(0, 12);
+    return `${tenantId}:${hash}`;
+  }
+
+  /**
+   * Get existing instance or create new one
+   * Instance is keyed by tenant + tool hash
+   * Agents are updated in-place on each request
    */
   private async getOrCreateInstance(
     tenantId: string,
-    workspaceConfig: WorkspaceConfig,
-  ): Promise<TenantInstance> {
-    const existing = this.instances.get(tenantId);
+    config: WorkspaceConfig,
+  ): Promise<PooledInstance> {
+    const instanceKey = this.computeInstanceKey(tenantId, config);
+    const existing = this.instances.get(instanceKey);
+
     if (existing) {
-      // Generate temp workspace to sync content from
-      const tempWorkspace = await this.workspaceService.generateWorkspace(workspaceConfig);
-      try {
-        await this.syncWorkspaceContent(tempWorkspace.path, existing.workspacePath);
-      } finally {
-        // Cleanup temp workspace after sync
-        await tempWorkspace.cleanup();
-      }
-      this.logger.debug(`Reusing OpenCode instance for tenant ${tenantId}`);
+      // Update agents in-place (cheap file writes)
+      await this.writeAgents(existing.workspacePath, config.agents);
+      this.logger.debug(`Reusing instance: ${instanceKey}`);
       return existing;
     }
 
-    // Generate workspace for new instance
-    const workspace = await this.workspaceService.generateWorkspace(workspaceConfig);
-    this.logger.log(`Creating new OpenCode instance for tenant ${tenantId}`);
+    // Create new workspace and instance
+    const workspacePath = await this.createWorkspace(instanceKey, config);
     const port = await this.findAvailablePort();
     const originalCwd = process.cwd();
 
+    this.logger.log(`Creating new instance: ${instanceKey}`);
+
     try {
-      process.chdir(workspace.path);
+      process.chdir(workspacePath);
       const instance = await createOpencode({
         hostname: this.hostname,
         port,
         timeout: this.timeout,
       });
 
-      const tenantInstance: TenantInstance = {
+      const pooledInstance: PooledInstance = {
         instance,
         port,
-        workspacePath: workspace.path,
+        workspacePath,
         lastUsed: Date.now(),
         idleTimer: null,
       };
 
-      this.instances.set(tenantId, tenantInstance);
-      this.logger.log(`OpenCode for tenant ${tenantId} started on port ${port}`);
+      this.instances.set(instanceKey, pooledInstance);
+      this.logger.log(`Instance ${instanceKey} started on port ${port}`);
 
-      return tenantInstance;
+      return pooledInstance;
     } finally {
       process.chdir(originalCwd);
     }
   }
 
   /**
-   * Sync workspace content (agents, tools, config) from new workspace to existing workspace
+   * Create workspace directory with tools and agents
    */
-  private async syncWorkspaceContent(
-    sourcePath: string,
-    targetPath: string,
-  ): Promise<void> {
-    // Sync .opencode directory (contains agents and tools)
-    const sourceOpencode = path.join(sourcePath, ".opencode");
-    const targetOpencode = path.join(targetPath, ".opencode");
+  private async createWorkspace(instanceKey: string, config: WorkspaceConfig): Promise<string> {
+    const workspacePath = path.join(this.baseDir, instanceKey.replace(":", "-"));
+    const opencodeDir = path.join(workspacePath, ".opencode");
+    const agentDir = path.join(opencodeDir, "agent");
+    const toolDir = path.join(opencodeDir, "tool");
 
-    // Sync agents
-    const sourceAgents = path.join(sourceOpencode, "agent");
-    const targetAgents = path.join(targetOpencode, "agent");
-    await this.syncDirectory(sourceAgents, targetAgents);
+    // Create directories
+    await fs.mkdir(agentDir, { recursive: true });
+    await fs.mkdir(toolDir, { recursive: true });
 
-    // Sync tools
-    const sourceTools = path.join(sourceOpencode, "tool");
-    const targetTools = path.join(targetOpencode, "tool");
-    await this.syncDirectory(sourceTools, targetTools);
+    // Write tools
+    await this.writeTools(workspacePath, config.tools);
 
-    // Sync opencode.json
-    const sourceConfig = path.join(sourcePath, "opencode.json");
-    const targetConfig = path.join(targetPath, "opencode.json");
-    try {
-      const content = await fs.readFile(sourceConfig, "utf-8");
-      await fs.writeFile(targetConfig, content, "utf-8");
-    } catch {
-      // Ignore if config doesn't exist
+    // Write agents
+    await this.writeAgents(workspacePath, config.agents);
+
+    // Write opencode.json
+    await this.writeOpencodeConfig(workspacePath, config);
+
+    return workspacePath;
+  }
+
+  /**
+   * Write tools to workspace (only on workspace creation)
+   */
+  private async writeTools(workspacePath: string, tools: ToolDefinition[]): Promise<void> {
+    const toolDir = path.join(workspacePath, ".opencode", "tool");
+    for (const tool of tools) {
+      const toolPath = path.join(toolDir, `${tool.name}.ts`);
+      await fs.writeFile(toolPath, tool.source, "utf-8");
     }
   }
 
   /**
-   * Sync directory contents, clearing target and copying source files
+   * Write agents to workspace (called on every request)
    */
-  private async syncDirectory(sourcePath: string, targetPath: string): Promise<void> {
-    try {
-      // Clear target directory
-      const existingFiles = await fs.readdir(targetPath).catch(() => []);
-      for (const file of existingFiles) {
-        await fs.rm(path.join(targetPath, file), { force: true });
-      }
-
-      // Copy source files
-      const sourceFiles = await fs.readdir(sourcePath).catch(() => []);
-      for (const file of sourceFiles) {
-        const content = await fs.readFile(path.join(sourcePath, file), "utf-8");
-        await fs.writeFile(path.join(targetPath, file), content, "utf-8");
-      }
-    } catch {
-      // Ignore errors - directories may not exist
+  private async writeAgents(workspacePath: string, agents: AgentDefinition[]): Promise<void> {
+    const agentDir = path.join(workspacePath, ".opencode", "agent");
+    for (const agent of agents) {
+      const agentPath = path.join(agentDir, `${agent.name}.md`);
+      await fs.writeFile(agentPath, agent.content, "utf-8");
     }
+  }
+
+  /**
+   * Write opencode.json configuration
+   */
+  private async writeOpencodeConfig(workspacePath: string, config: WorkspaceConfig): Promise<void> {
+    const opencodeConfig: Record<string, unknown> = {
+      $schema: "https://opencode.ai/config.json",
+    };
+
+    if (config.requestModel) {
+      opencodeConfig.model = `${config.requestModel.providerId}/${config.requestModel.modelId}`;
+    } else if (config.defaultModel) {
+      opencodeConfig.model = `${config.defaultModel.providerId}/${config.defaultModel.modelId}`;
+    }
+
+    await fs.writeFile(
+      path.join(workspacePath, "opencode.json"),
+      JSON.stringify(opencodeConfig, null, 2),
+      "utf-8",
+    );
   }
 
   /**
    * Update last used time and reset idle timer
    */
-  private touchInstance(tenantId: string): void {
-    const tenantInstance = this.instances.get(tenantId);
-    if (!tenantInstance) return;
+  private touchInstance(instanceKey: string): void {
+    const pooledInstance = this.instances.get(instanceKey);
+    if (!pooledInstance) return;
 
-    tenantInstance.lastUsed = Date.now();
+    pooledInstance.lastUsed = Date.now();
 
     // Clear existing timer
-    if (tenantInstance.idleTimer) {
-      clearTimeout(tenantInstance.idleTimer);
+    if (pooledInstance.idleTimer) {
+      clearTimeout(pooledInstance.idleTimer);
     }
 
     // Set new idle timer
-    tenantInstance.idleTimer = setTimeout(() => {
-      this.logger.log(
-        `Tenant ${tenantId} idle for ${this.idleTimeoutMs / 1000}s, shutting down instance`,
-      );
-      this.shutdownInstance(tenantId);
+    pooledInstance.idleTimer = setTimeout(() => {
+      this.logger.log(`Instance ${instanceKey} idle for ${this.idleTimeoutMs / 1000}s, shutting down`);
+      this.shutdownInstance(instanceKey);
     }, this.idleTimeoutMs);
   }
 
