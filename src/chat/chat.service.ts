@@ -177,22 +177,34 @@ export class ChatService {
 
   /**
    * Parse model string to internal ModelSelection format
+   * Supports: provider/model, provider/model@agent, model, model@agent
    */
   private parseModel(model: string, tenant: TenantConfig): ModelSelection {
-    if (model.includes("/")) {
-      const slashIndex = model.indexOf("/");
+    // Extract agent if present (model@agent syntax)
+    let agentId: string | undefined;
+    let modelPart = model;
+
+    if (model.includes("@")) {
+      const atIndex = model.lastIndexOf("@");
+      modelPart = model.substring(0, atIndex);
+      agentId = model.substring(atIndex + 1);
+    }
+
+    if (modelPart.includes("/")) {
+      const slashIndex = modelPart.indexOf("/");
       return {
-        providerId: model.substring(0, slashIndex),
-        modelId: model.substring(slashIndex + 1),
+        providerId: modelPart.substring(0, slashIndex),
+        modelId: modelPart.substring(slashIndex + 1),
+        agentId,
       };
     }
 
     if (tenant.defaultModel) {
-      return { providerId: tenant.defaultModel.providerId, modelId: model };
+      return { providerId: tenant.defaultModel.providerId, modelId: modelPart, agentId };
     }
 
     const firstProvider = Object.keys(tenant.providers)[0];
-    return { providerId: firstProvider ?? "", modelId: model };
+    return { providerId: firstProvider ?? "", modelId: modelPart, agentId };
   }
 
   private async collectTools(tenantId: string): Promise<ToolDefinition[]> {

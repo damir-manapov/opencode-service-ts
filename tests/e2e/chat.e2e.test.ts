@@ -551,7 +551,7 @@ After the marker, respond normally to the user's question.`;
     const response = await httpRequest("POST", "/v1/chat/completions", {
       token: tenantToken,
       body: {
-        model: "openrouter/openai/gpt-4o-mini",
+        model: `openrouter/openai/gpt-4o-mini@${AGENT_NAME}`,
         messages: [{ role: "user", content: "Say hello" }],
       },
     });
@@ -570,7 +570,7 @@ After the marker, respond normally to the user's question.`;
     const response = await httpRequest("POST", "/v1/chat/completions", {
       token: tenantToken,
       body: {
-        model: "openrouter/openai/gpt-4o-mini",
+        model: `openrouter/openai/gpt-4o-mini@${AGENT_NAME}`,
         stream: true,
         messages: [{ role: "user", content: "Say hello" }],
       },

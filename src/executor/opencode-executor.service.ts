@@ -1,4 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { createOpencode } from "@opencode-ai/sdk";
 import type {
   ChatMessage,
@@ -99,6 +101,7 @@ export class OpencodeExecutorService implements OnModuleDestroy {
           body: {
             model: { providerID, modelID },
             parts: [{ type: "text", text: prompt }],
+            ...(model?.agentId && { agent: model.agentId }),
           },
         });
 
@@ -208,13 +211,16 @@ export class OpencodeExecutorService implements OnModuleDestroy {
 
   /**
    * Get existing instance or create new one for tenant
+   * If reusing, syncs the new workspace content (agents/tools) to the existing workspace
    */
   private async getOrCreateInstance(
     tenantId: string,
-    workspacePath: string,
+    newWorkspacePath: string,
   ): Promise<TenantInstance> {
     const existing = this.instances.get(tenantId);
     if (existing) {
+      // Sync new workspace content to existing workspace
+      await this.syncWorkspaceContent(newWorkspacePath, existing.workspacePath);
       this.logger.debug(`Reusing OpenCode instance for tenant ${tenantId}`);
       return existing;
     }
@@ -224,7 +230,7 @@ export class OpencodeExecutorService implements OnModuleDestroy {
     const originalCwd = process.cwd();
 
     try {
-      process.chdir(workspacePath);
+      process.chdir(newWorkspacePath);
       const instance = await createOpencode({
         hostname: this.hostname,
         port,
@@ -234,7 +240,7 @@ export class OpencodeExecutorService implements OnModuleDestroy {
       const tenantInstance: TenantInstance = {
         instance,
         port,
-        workspacePath,
+        workspacePath: newWorkspacePath,
         lastUsed: Date.now(),
         idleTimer: null,
       };
@@ -245,6 +251,60 @@ export class OpencodeExecutorService implements OnModuleDestroy {
       return tenantInstance;
     } finally {
       process.chdir(originalCwd);
+    }
+  }
+
+  /**
+   * Sync workspace content (agents, tools, config) from new workspace to existing workspace
+   */
+  private async syncWorkspaceContent(
+    sourcePath: string,
+    targetPath: string,
+  ): Promise<void> {
+    // Sync .opencode directory (contains agents and tools)
+    const sourceOpencode = path.join(sourcePath, ".opencode");
+    const targetOpencode = path.join(targetPath, ".opencode");
+
+    // Sync agents
+    const sourceAgents = path.join(sourceOpencode, "agent");
+    const targetAgents = path.join(targetOpencode, "agent");
+    await this.syncDirectory(sourceAgents, targetAgents);
+
+    // Sync tools
+    const sourceTools = path.join(sourceOpencode, "tool");
+    const targetTools = path.join(targetOpencode, "tool");
+    await this.syncDirectory(sourceTools, targetTools);
+
+    // Sync opencode.json
+    const sourceConfig = path.join(sourcePath, "opencode.json");
+    const targetConfig = path.join(targetPath, "opencode.json");
+    try {
+      const content = await fs.readFile(sourceConfig, "utf-8");
+      await fs.writeFile(targetConfig, content, "utf-8");
+    } catch {
+      // Ignore if config doesn't exist
+    }
+  }
+
+  /**
+   * Sync directory contents, clearing target and copying source files
+   */
+  private async syncDirectory(sourcePath: string, targetPath: string): Promise<void> {
+    try {
+      // Clear target directory
+      const existingFiles = await fs.readdir(targetPath).catch(() => []);
+      for (const file of existingFiles) {
+        await fs.rm(path.join(targetPath, file), { force: true });
+      }
+
+      // Copy source files
+      const sourceFiles = await fs.readdir(sourcePath).catch(() => []);
+      for (const file of sourceFiles) {
+        const content = await fs.readFile(path.join(sourcePath, file), "utf-8");
+        await fs.writeFile(path.join(targetPath, file), content, "utf-8");
+      }
+    } catch {
+      // Ignore errors - directories may not exist
     }
   }
 

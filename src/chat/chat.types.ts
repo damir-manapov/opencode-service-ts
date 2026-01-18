@@ -30,6 +30,7 @@ export interface ToolDefinitionParam {
 export interface ModelSelection {
   providerId: string;
   modelId: string;
+  agentId?: string; // Optional agent from model@agent syntax
 }
 
 // OpenAI-compatible request
