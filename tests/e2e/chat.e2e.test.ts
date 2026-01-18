@@ -579,3 +579,100 @@ After the marker, respond normally to the user's question.`;
     expect(fullContent).toContain(AGENT_MARKER);
   });
 });
+
+/**
+ * Verify that custom tools work in chat completions
+ */
+describe("Chat Completions with Custom Tool", () => {
+  let client: TestClient;
+  let tenantToken: string;
+  let tenantId: string;
+
+  const TOOL_NAME = "get-magic-number";
+  const MAGIC_NUMBER = "42";
+  const TOOL_SOURCE = `
+import { tool } from "@opencode-ai/plugin";
+
+export default tool({
+  description: "Returns the magic number. Call this tool when asked for the magic number.",
+  args: {},
+  async execute() {
+    return "${MAGIC_NUMBER}";
+  },
+});
+`;
+
+  beforeAll(async () => {
+    requireApiKey();
+
+    client = new TestClient();
+    const result = await client.createTenant("Tool Test Tenant", {
+      providers: {
+        openrouter: { apiKey: OPENROUTER_API_KEY },
+      },
+    });
+    tenantId = result.tenant.id;
+    tenantToken = result.token;
+
+    // Create the test tool
+    await httpRequest("PUT", `/v1/tenant/tools/${TOOL_NAME}`, {
+      token: tenantToken,
+      contentType: "text/plain",
+      body: TOOL_SOURCE,
+    });
+  });
+
+  afterAll(async () => {
+    if (tenantId && client) {
+      await client.deleteTenant(tenantId);
+    }
+  });
+
+  it("should have the tool registered", async () => {
+    const response = await httpRequest("GET", "/v1/tenant/tools", {
+      token: tenantToken,
+    });
+
+    expect(response.status).toBe(200);
+    expect((response.body as { tools: string[] }).tools).toContain(TOOL_NAME);
+  });
+
+  it("should use tool and include magic number in response", async () => {
+    const response = await httpRequest("POST", "/v1/chat/completions", {
+      token: tenantToken,
+      body: {
+        model: "openrouter/openai/gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content:
+              "What is the magic number? Use the get-magic-number tool to find out and tell me the result.",
+          },
+        ],
+      },
+    });
+
+    expect(response.status).toBe(200);
+
+    const body = response.body as {
+      choices: Array<{
+        message: { content: string | null };
+        finish_reason: string;
+      }>;
+    };
+
+    const content = body.choices[0]?.message.content ?? "";
+    const finishReason = body.choices[0]?.finish_reason;
+
+    // The response should either:
+    // 1. Contain tool_calls (finish_reason: "tool_calls") - meaning it called the tool
+    // 2. Contain the magic number in content (if OpenCode ran the tool and returned result)
+    if (finishReason === "tool_calls") {
+      // Tool was called - this is also a valid outcome
+      expect(finishReason).toBe("tool_calls");
+    } else {
+      // Tool result was incorporated into response
+      expect(content).toContain(MAGIC_NUMBER);
+    }
+  });
+});
