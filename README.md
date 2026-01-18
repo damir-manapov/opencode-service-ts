@@ -49,11 +49,17 @@ pnpm start
 ## Scripts
 
 ```bash
-# Run tests
+# Run unit tests
 pnpm test
 
-# Run tests in watch mode
+# Run unit tests in watch mode
 pnpm test:watch
+
+# Run e2e tests (auto-starts server)
+pnpm test:e2e
+
+# Run all tests (unit + e2e)
+pnpm test:all
 
 # Lint and format (auto-fix)
 pnpm check
@@ -91,6 +97,7 @@ PORT=3000
 DATA_DIR=./data
 PREDEFINED_DIR=./predefined
 SESSION_TTL=24h                            # Format: 30m, 24h, 7d
+IDLE_TIMEOUT=5m                            # Per-tenant OpenCode instance timeout
 ALLOW_SELF_REGISTRATION=false
 ```
 
