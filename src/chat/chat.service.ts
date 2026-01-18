@@ -76,6 +76,7 @@ export class ChatService {
 
     try {
       const result = await this.executorService.execute({
+        tenantId,
         workspace,
         messages: request.messages,
         model: ctx.modelSelection,
@@ -143,6 +144,7 @@ export class ChatService {
       };
 
       for await (const chunk of this.executorService.executeStreaming({
+        tenantId,
         workspace,
         messages: request.messages,
         model: ctx.modelSelection,

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { createOpencode } from "@opencode-ai/sdk";
 import type {
   ChatMessage,
@@ -11,7 +11,19 @@ import type { GeneratedWorkspace } from "../workspace/workspace.types.js";
 type OpencodeInstance = Awaited<ReturnType<typeof createOpencode>>;
 type OpencodeClient = OpencodeInstance["client"];
 
+/** How long an instance can be idle before shutdown (5 minutes) */
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
+interface TenantInstance {
+  instance: OpencodeInstance;
+  port: number;
+  workspacePath: string;
+  lastUsed: number;
+  idleTimer: NodeJS.Timeout | null;
+}
+
 export interface ExecuteOptions {
+  tenantId: string;
   workspace: GeneratedWorkspace;
   messages: ChatMessage[];
   model?: ModelSelection;
@@ -20,22 +32,32 @@ export interface ExecuteOptions {
 }
 
 @Injectable()
-export class OpencodeExecutorService {
+export class OpencodeExecutorService implements OnModuleDestroy {
   private readonly logger = new Logger(OpencodeExecutorService.name);
   private readonly hostname = "127.0.0.1";
   private readonly timeout = 30000;
   private nextPort = 14096;
 
+  /** Map of tenantId -> running OpenCode instance */
+  private readonly instances = new Map<string, TenantInstance>();
+
+  async onModuleDestroy(): Promise<void> {
+    await this.shutdownAll();
+  }
+
   /**
    * Execute OpenCode with the given workspace and messages
-   * Returns the full response (non-streaming)
+   * Uses per-tenant instance pooling with idle timeout
    */
   async execute(options: ExecuteOptions): Promise<ExecutorResult> {
-    const { workspace, messages, model, providerCredentials } = options;
+    const { tenantId, workspace, messages, model, providerCredentials } = options;
 
-    // Start a fresh OpenCode instance in the workspace directory for tenant isolation
-    const instance = await this.startFreshInstance(workspace.path);
-    const client = instance.client;
+    // Get or create instance for this tenant
+    const tenantInstance = await this.getOrCreateInstance(tenantId, workspace.path);
+    const client = tenantInstance.instance.client;
+
+    // Update last used and reset idle timer
+    this.touchInstance(tenantId);
 
     try {
       // Set provider credentials via OpenCode auth API
@@ -47,7 +69,7 @@ export class OpencodeExecutorService {
       const providerID = model?.providerId ?? "anthropic";
       const modelID = model?.modelId ?? "claude-sonnet-4-20250514";
 
-      this.logger.log(`Executing: ${providerID}/${modelID} in ${workspace.path}`);
+      this.logger.log(`Executing: ${providerID}/${modelID} for tenant ${tenantId}`);
 
       // Create session
       const createResponse = await client.session.create({
@@ -127,8 +149,11 @@ export class OpencodeExecutorService {
       } finally {
         await client.session.delete({ path: { id: session.id } }).catch(() => {});
       }
-    } finally {
-      instance.server.close();
+    } catch (error) {
+      // On error, shutdown this instance to ensure clean state next time
+      this.logger.warn(`Error for tenant ${tenantId}, shutting down instance`);
+      await this.shutdownInstance(tenantId);
+      throw error;
     }
   }
 
@@ -148,22 +173,88 @@ export class OpencodeExecutorService {
   }
 
   /**
-   * Start a fresh OpenCode instance in a specific workspace directory
+   * Shutdown instance for a specific tenant (e.g., on tenant deletion)
    */
-  private async startFreshInstance(workspacePath: string): Promise<OpencodeInstance> {
+  async shutdownInstance(tenantId: string): Promise<void> {
+    const tenantInstance = this.instances.get(tenantId);
+    if (tenantInstance) {
+      if (tenantInstance.idleTimer) {
+        clearTimeout(tenantInstance.idleTimer);
+      }
+      this.logger.log(`Shutting down OpenCode for tenant ${tenantId}`);
+      tenantInstance.instance.server.close();
+      this.instances.delete(tenantId);
+    }
+  }
+
+  /**
+   * Shutdown all instances (on module destroy)
+   */
+  private async shutdownAll(): Promise<void> {
+    this.logger.log(`Shutting down all OpenCode instances (${this.instances.size} active)`);
+    for (const tenantId of this.instances.keys()) {
+      await this.shutdownInstance(tenantId);
+    }
+  }
+
+  /**
+   * Get existing instance or create new one for tenant
+   */
+  private async getOrCreateInstance(tenantId: string, workspacePath: string): Promise<TenantInstance> {
+    const existing = this.instances.get(tenantId);
+    if (existing) {
+      this.logger.debug(`Reusing OpenCode instance for tenant ${tenantId}`);
+      return existing;
+    }
+
+    this.logger.log(`Creating new OpenCode instance for tenant ${tenantId}`);
     const port = this.getNextPort();
     const originalCwd = process.cwd();
 
     try {
       process.chdir(workspacePath);
-      return await createOpencode({
+      const instance = await createOpencode({
         hostname: this.hostname,
         port,
         timeout: this.timeout,
       });
+
+      const tenantInstance: TenantInstance = {
+        instance,
+        port,
+        workspacePath,
+        lastUsed: Date.now(),
+        idleTimer: null,
+      };
+
+      this.instances.set(tenantId, tenantInstance);
+      this.logger.log(`OpenCode for tenant ${tenantId} started on port ${port}`);
+
+      return tenantInstance;
     } finally {
       process.chdir(originalCwd);
     }
+  }
+
+  /**
+   * Update last used time and reset idle timer
+   */
+  private touchInstance(tenantId: string): void {
+    const tenantInstance = this.instances.get(tenantId);
+    if (!tenantInstance) return;
+
+    tenantInstance.lastUsed = Date.now();
+
+    // Clear existing timer
+    if (tenantInstance.idleTimer) {
+      clearTimeout(tenantInstance.idleTimer);
+    }
+
+    // Set new idle timer
+    tenantInstance.idleTimer = setTimeout(() => {
+      this.logger.log(`Tenant ${tenantId} idle for ${IDLE_TIMEOUT_MS / 1000}s, shutting down instance`);
+      this.shutdownInstance(tenantId);
+    }, IDLE_TIMEOUT_MS);
   }
 
   private getNextPort(): number {
