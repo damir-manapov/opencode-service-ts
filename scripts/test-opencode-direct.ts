@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Test OpenCode SDK directly
  * Usage: bun scripts/test-opencode-direct.ts [prompt]
@@ -10,6 +11,8 @@
  * This spins up a new OpenCode server and tests prompting directly.
  */
 
+import { execSync } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
 import { createOpencode } from "@opencode-ai/sdk";
 
 const OPENROUTER_API_KEY = process.env._OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
@@ -81,9 +84,7 @@ async function main() {
 
     // Create a temp directory like the service does - WITH GIT INIT
     const workspaceDir = `/tmp/opencode-workspaces/test-${Date.now()}`;
-    const fs = await import("node:fs/promises");
-    const { execSync } = await import("node:child_process");
-    await fs.mkdir(workspaceDir, { recursive: true });
+    await mkdir(workspaceDir, { recursive: true });
 
     // Initialize as git repo (OpenCode requires this for directory-based sessions)
     execSync("git init", { cwd: workspaceDir, stdio: "ignore" });
@@ -95,7 +96,7 @@ async function main() {
       provider: { openrouter: {} },
       model: "openrouter/openai/gpt-4o-mini",
     };
-    await fs.writeFile(`${workspaceDir}/opencode.json`, JSON.stringify(opencodeConfig, null, 2));
+    await writeFile(`${workspaceDir}/opencode.json`, JSON.stringify(opencodeConfig, null, 2));
     console.log("📝 Created opencode.json in workspace");
 
     // Set auth WITH directory (like the service does)
