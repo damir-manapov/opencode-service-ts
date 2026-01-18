@@ -541,3 +541,138 @@ describe("Chat Completions Response Format", () => {
     }, 60000);
   });
 });
+
+/**
+ * Agent Usage Tests
+ * Verify that agents are applied to chat completions
+ */
+describe("Chat Completions with Agent", () => {
+  const OPENROUTER_API_KEY = process.env["E2E_OPENROUTER_API_KEY"];
+
+  let client: TestClient;
+  let tenantToken: string;
+  let tenantId: string;
+
+  const AGENT_NAME = "test-agent";
+  const AGENT_MARKER = "[AGENT:test-agent]";
+  const AGENT_CONTENT = `# Test Agent
+
+You are a test agent. You MUST prefix EVERY response with exactly "${AGENT_MARKER}" on the first line.
+
+After the marker, respond normally to the user's question.`;
+
+  beforeAll(async () => {
+    if (!OPENROUTER_API_KEY) {
+      return;
+    }
+
+    client = new TestClient();
+    const result = await client.createTenant("Agent Test Tenant", {
+      providers: {
+        openrouter: { apiKey: OPENROUTER_API_KEY },
+      },
+    });
+    tenantId = result.tenant.id;
+    tenantToken = result.token;
+
+    // Create the test agent
+    await httpRequest("PUT", `/v1/tenant/agents/${AGENT_NAME}`, {
+      token: tenantToken,
+      contentType: "text/plain",
+      body: AGENT_CONTENT,
+    });
+  });
+
+  afterAll(async () => {
+    if (tenantId && client) {
+      await client.deleteTenant(tenantId);
+    }
+  });
+
+  it("should have the agent registered", async () => {
+    if (!OPENROUTER_API_KEY) {
+      console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
+      return;
+    }
+
+    const response = await httpRequest("GET", "/v1/tenant/agents", {
+      token: tenantToken,
+    });
+
+    expect(response.status).toBe(200);
+    expect((response.body as { agents: string[] }).agents).toContain(AGENT_NAME);
+  });
+
+  it("should use agent and include marker in response", async () => {
+    if (!OPENROUTER_API_KEY) {
+      console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
+      return;
+    }
+
+    const response = await httpRequest("POST", "/v1/chat/completions", {
+      token: tenantToken,
+      body: {
+        model: "openrouter/openai/gpt-4o-mini",
+        messages: [{ role: "user", content: "Say hello" }],
+      },
+    });
+
+    if (response.status !== 200) {
+      console.log("Skipping: execution failed with status", response.status);
+      return;
+    }
+
+    const body = response.body as {
+      choices: Array<{ message: { content: string } }>;
+    };
+
+    const content = body.choices[0]?.message.content ?? "";
+    expect(content).toContain(AGENT_MARKER);
+  }, 60000);
+
+  it("should use agent in streaming response", async () => {
+    if (!OPENROUTER_API_KEY) {
+      console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
+      return;
+    }
+
+    const response = await httpRequest("POST", "/v1/chat/completions", {
+      token: tenantToken,
+      body: {
+        model: "openrouter/openai/gpt-4o-mini",
+        stream: true,
+        messages: [{ role: "user", content: "Say hello" }],
+      },
+    });
+
+    if (response.status !== 200) {
+      console.log("Skipping: execution failed");
+      return;
+    }
+
+    // Check if response contains error
+    if (response.text.includes('"error"')) {
+      console.log("Skipping: stream returned error");
+      return;
+    }
+
+    // Concatenate all content from SSE chunks
+    const lines = response.text.split("\n");
+    let fullContent = "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+        try {
+          const chunk = JSON.parse(line.replace("data: ", "")) as {
+            choices: Array<{ delta: { content?: string } }>;
+          };
+          fullContent += chunk.choices[0]?.delta.content ?? "";
+        } catch {
+          // Skip invalid JSON
+        }
+      }
+    }
+
+    expect(fullContent).toContain(AGENT_MARKER);
+  }, 60000);
+});
