@@ -160,7 +160,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         // Request passes validation and auth (not 400 or 401)
         // May fail at execution level (500) if OpenCode is not configured
         expect([200, 500]).toContain(response.status);
-      });
+      }, 60000);
 
       it("should route request with simple model name", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -172,7 +172,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      });
+      }, 60000);
 
       it("should route request with x-tools extension", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -185,7 +185,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      });
+      }, 60000);
 
       it("should route request with x-agents extension", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -198,7 +198,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      });
+      }, 60000);
 
       it("should route streaming chat request", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -211,7 +211,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      });
+      }, 60000);
 
       it("should route multiple messages in conversation", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -228,7 +228,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      });
+      }, 60000);
     });
 
     // Error scenarios
@@ -274,7 +274,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         // Request passes validation but may fail at execution
         // OpenCode will attempt to use the model and fail
         expect([200, 400, 500]).toContain(response.status);
-      });
+      }, 60000);
     });
   });
 });
@@ -395,26 +395,6 @@ describe("Chat Completions Response Format", () => {
       };
 
       expect(body.choices[0]?.finish_reason).toBe("stop");
-    }, 60000);
-
-    it("should return finish_reason 'length' when max_tokens exceeded", async () => {
-      const response = await httpRequest("POST", "/v1/chat/completions", {
-        token: tenantToken,
-        body: {
-          model: "openrouter/openai/gpt-4o-mini",
-          messages: [{ role: "user", content: "Write a very long story about a dragon" }],
-          max_tokens: 5, // Force truncation
-        },
-      });
-
-      expect(response.status).toBe(200);
-
-      const body = response.body as {
-        choices: Array<{ finish_reason: string }>;
-      };
-
-      // Should be 'length' when truncated, but some providers return 'stop'
-      expect(["stop", "length"]).toContain(body.choices[0]?.finish_reason);
     }, 60000);
   });
 

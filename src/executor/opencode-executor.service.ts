@@ -68,17 +68,23 @@ export class OpencodeExecutorService implements OnModuleDestroy {
     const { tenantId, workspaceConfig, messages, model, providerCredentials } = options;
 
     // Get or create instance based on tenant + tool hash
-    const pooledInstance = await this.getOrCreateInstance(tenantId, workspaceConfig);
+    const { pooledInstance, instanceKey } = await this.getOrCreateInstance(
+      tenantId,
+      workspaceConfig,
+    );
     const client = pooledInstance.instance.client;
 
     // Update last used and reset idle timer
-    const instanceKey = this.computeInstanceKey(tenantId, workspaceConfig);
     this.touchInstance(instanceKey);
 
     try {
       // Set provider credentials via OpenCode auth API
       if (providerCredentials) {
-        await this.setProviderCredentials(client, providerCredentials, pooledInstance.workspacePath);
+        await this.setProviderCredentials(
+          client,
+          providerCredentials,
+          pooledInstance.workspacePath,
+        );
       }
 
       const prompt = this.buildPrompt(messages);
@@ -173,7 +179,6 @@ export class OpencodeExecutorService implements OnModuleDestroy {
       }
     } catch (error) {
       // On error, shutdown this instance to ensure clean state next time
-      const instanceKey = this.computeInstanceKey(tenantId, workspaceConfig);
       this.logger.warn(`Error for ${instanceKey}, shutting down instance`);
       await this.shutdownInstance(instanceKey);
       throw error;
@@ -240,36 +245,27 @@ export class OpencodeExecutorService implements OnModuleDestroy {
   }
 
   /**
-   * Compute instance key from tenant + tool configuration
-   */
-  private computeInstanceKey(tenantId: string, config: WorkspaceConfig): string {
-    const fingerprint = {
-      tools: config.tools.map((t) => t.name).sort(),
-    };
-    const hash = createHash("sha256")
-      .update(JSON.stringify(fingerprint))
-      .digest("hex")
-      .slice(0, 12);
-    return `${tenantId}:${hash}`;
-  }
-
-  /**
    * Get existing instance or create new one
    * Instance is keyed by tenant + tool hash
    * Agents are updated in-place on each request
+   * Returns both the instance and its key
    */
   private async getOrCreateInstance(
     tenantId: string,
     config: WorkspaceConfig,
-  ): Promise<PooledInstance> {
-    const instanceKey = this.computeInstanceKey(tenantId, config);
+  ): Promise<{ pooledInstance: PooledInstance; instanceKey: string }> {
+    // Compute instance key from tenant + tool fingerprint
+    const toolNames = config.tools.map((t) => t.name).sort();
+    const hash = createHash("sha256").update(JSON.stringify(toolNames)).digest("hex").slice(0, 12);
+    const instanceKey = `${tenantId}:${hash}`;
+
     const existing = this.instances.get(instanceKey);
 
     if (existing) {
       // Update agents in-place (cheap file writes)
       await this.writeAgents(existing.workspacePath, config.agents);
       this.logger.debug(`Reusing instance: ${instanceKey}`);
-      return existing;
+      return { pooledInstance: existing, instanceKey };
     }
 
     // Create new workspace and instance
@@ -298,7 +294,7 @@ export class OpencodeExecutorService implements OnModuleDestroy {
       this.instances.set(instanceKey, pooledInstance);
       this.logger.log(`Instance ${instanceKey} started on port ${port}`);
 
-      return pooledInstance;
+      return { pooledInstance, instanceKey };
     } finally {
       process.chdir(originalCwd);
     }
@@ -388,7 +384,9 @@ export class OpencodeExecutorService implements OnModuleDestroy {
 
     // Set new idle timer
     pooledInstance.idleTimer = setTimeout(() => {
-      this.logger.log(`Instance ${instanceKey} idle for ${this.idleTimeoutMs / 1000}s, shutting down`);
+      this.logger.log(
+        `Instance ${instanceKey} idle for ${this.idleTimeoutMs / 1000}s, shutting down`,
+      );
       this.shutdownInstance(instanceKey);
     }, this.idleTimeoutMs);
   }
