@@ -5,8 +5,8 @@ export default defineConfig({
     globals: false,
     environment: "node",
     include: ["tests/e2e/**/*.test.ts"],
-    testTimeout: 30000,
-    hookTimeout: 30000,
+    testTimeout: 60000,
+    hookTimeout: 60000,
     // Run tests sequentially since they share server state
     sequence: {
       concurrent: false,

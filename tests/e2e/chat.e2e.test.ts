@@ -160,7 +160,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         // Request passes validation and auth (not 400 or 401)
         // May fail at execution level (500) if OpenCode is not configured
         expect([200, 500]).toContain(response.status);
-      }, 60000);
+      });
 
       it("should route request with simple model name", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -172,7 +172,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      }, 60000);
+      });
 
       it("should route request with x-tools extension", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -185,7 +185,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      }, 60000);
+      });
 
       it("should route request with x-agents extension", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -198,7 +198,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      }, 60000);
+      });
 
       it("should route streaming chat request", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -211,7 +211,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      }, 60000);
+      });
 
       it("should route multiple messages in conversation", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -228,7 +228,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect([200, 500]).toContain(response.status);
-      }, 60000);
+      });
     });
 
     // Error scenarios
@@ -274,7 +274,7 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         // Request passes validation but may fail at execution
         // OpenCode will attempt to use the model and fail
         expect([200, 400, 500]).toContain(response.status);
-      }, 60000);
+      });
     });
   });
 });
@@ -377,7 +377,7 @@ describe("Chat Completions Response Format", () => {
         expect(typeof body.usage.completion_tokens).toBe("number");
         expect(typeof body.usage.total_tokens).toBe("number");
       }
-    }, 60000);
+    });
 
     it("should return finish_reason 'stop' for normal completion", async () => {
       const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -395,7 +395,7 @@ describe("Chat Completions Response Format", () => {
       };
 
       expect(body.choices[0]?.finish_reason).toBe("stop");
-    }, 60000);
+    });
   });
 
   describe("Streaming response format", () => {
@@ -414,7 +414,7 @@ describe("Chat Completions Response Format", () => {
       // Should be SSE content type
       const contentType = response.headers.get("content-type");
       expect(contentType).toContain("text/event-stream");
-    }, 60000);
+    });
 
     it("should end stream with data: [DONE]", async () => {
       const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -431,7 +431,7 @@ describe("Chat Completions Response Format", () => {
 
       // Stream should end with [DONE]
       expect(response.text).toContain("data: [DONE]");
-    }, 60000);
+    });
 
     it("should have valid SSE chunk structure", async () => {
       const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -471,7 +471,7 @@ describe("Chat Completions Response Format", () => {
         expect(parsed.choices[0]?.index).toBe(0);
         expect(parsed.choices[0]?.delta).toBeDefined();
       }
-    }, 60000);
+    });
   });
 });
 
@@ -544,7 +544,7 @@ After the marker, respond normally to the user's question.`;
 
     const content = body.choices[0]?.message.content ?? "";
     expect(content).toContain(AGENT_MARKER);
-  }, 60000);
+  });
 
   it("should use agent in streaming response", async () => {
     const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -577,5 +577,5 @@ After the marker, respond normally to the user's question.`;
     }
 
     expect(fullContent).toContain(AGENT_MARKER);
-  }, 60000);
+  });
 });

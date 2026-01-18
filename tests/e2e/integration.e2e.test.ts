@@ -76,7 +76,7 @@ describe("OpenCode Integration (real execution)", () => {
         expect(body.choices[0]?.message.content).toBeTruthy();
         expect(body.choices[0]?.finish_reason).toBe("stop");
       }
-    }, 60000); // 60s timeout for LLM response
+    });
 
     it("should handle simple math question", async () => {
       requireApiKey();
@@ -98,7 +98,7 @@ describe("OpenCode Integration (real execution)", () => {
         };
         expect(body.choices[0]?.message.content).toContain("4");
       }
-    }, 60000);
+    });
   });
 
   describe("Streaming chat completion", () => {
@@ -125,7 +125,7 @@ describe("OpenCode Integration (real execution)", () => {
         const chunks = response.text.split("\n\n").filter((c) => c.startsWith("data:"));
         expect(chunks.length).toBeGreaterThan(0);
       }
-    }, 60000);
+    });
   });
 
   describe("Multiple models", () => {
@@ -143,6 +143,6 @@ describe("OpenCode Integration (real execution)", () => {
 
       // May fail if OpenCode execution has issues
       expect([200, 500]).toContain(response.status);
-    }, 60000);
+    });
   });
 });
