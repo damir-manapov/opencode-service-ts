@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+import OpenAI from "openai";
+
 /**
  * Test OpenAI API compatibility
  * Usage: bun scripts/test-openai-compat.ts
@@ -10,8 +11,6 @@
  * Note: Chat completions require OpenCode server to be running.
  * Models endpoint works without OpenCode.
  */
-
-import OpenAI from "openai";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "admin-secret";

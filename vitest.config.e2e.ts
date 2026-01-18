@@ -11,5 +11,7 @@ export default defineConfig({
     sequence: {
       concurrent: false,
     },
+    // Auto-start and stop the server
+    globalSetup: ["tests/e2e/globalSetup.ts"],
   },
 });

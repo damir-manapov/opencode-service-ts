@@ -1,4 +1,6 @@
-#!/usr/bin/env bun
+import { execSync } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import { createOpencode } from "@opencode-ai/sdk";
 
 /**
  * Test OpenCode SDK directly
@@ -10,10 +12,6 @@
  *
  * This spins up a new OpenCode server and tests prompting directly.
  */
-
-import { execSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
-import { createOpencode } from "@opencode-ai/sdk";
 
 const OPENROUTER_API_KEY = process.env._OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
 const DEFAULT_PROMPT = "Say 'Hello from OpenCode!' in exactly those words.";

@@ -4,12 +4,11 @@
  * These tests are implementation-agnostic - they test the HTTP API
  * against a running server. This allows testing both TypeScript and Go implementations.
  *
- * Usage:
- *   1. Start the server: DATA_DIR=/tmp/e2e ADMIN_TOKENS=test-admin-token pnpm dev
- *   2. Run tests: pnpm test:e2e
+ * The server is auto-started by globalSetup.ts, or you can run manually:
+ *   DATA_DIR=/tmp/e2e PORT=3333 ADMIN_TOKENS=test-admin-token pnpm dev
  *
  * Environment variables:
- *   - E2E_BASE_URL: Base URL of the server (default: http://localhost:3000)
+ *   - E2E_BASE_URL: Base URL of the server (default: http://localhost:3333)
  *   - E2E_ADMIN_TOKEN: Admin token for authentication (default: test-admin-token)
  */
 
@@ -20,7 +19,7 @@ export interface TestConfig {
 
 export function getTestConfig(): TestConfig {
   return {
-    baseUrl: process.env["E2E_BASE_URL"] ?? "http://localhost:3000",
+    baseUrl: process.env["E2E_BASE_URL"] ?? "http://localhost:3333",
     adminToken: process.env["E2E_ADMIN_TOKEN"] ?? "test-admin-token",
   };
 }
