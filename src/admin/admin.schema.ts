@@ -17,7 +17,10 @@ export const CreateTenantInputSchema = z.object({
     .string()
     .min(1, "name is required")
     .max(100, "name must be at most 100 characters")
-    .regex(/^[a-zA-Z0-9_ -]+$/, "name must contain only alphanumeric characters, spaces, hyphens, and underscores"),
+    .regex(
+      /^[a-zA-Z0-9_ -]+$/,
+      "name must contain only alphanumeric characters, spaces, hyphens, and underscores",
+    ),
   providers: z.record(z.string(), ProviderConfigSchema).optional().default({}),
   defaultModel: ModelConfigSchema.optional(),
 });

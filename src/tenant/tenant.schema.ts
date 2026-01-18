@@ -7,7 +7,10 @@ export const UpdateConfigInputSchema = z.object({
     .string()
     .min(1, "name cannot be empty")
     .max(100, "name must be at most 100 characters")
-    .regex(/^[a-zA-Z0-9_ -]+$/, "name must contain only alphanumeric characters, spaces, hyphens, and underscores")
+    .regex(
+      /^[a-zA-Z0-9_ -]+$/,
+      "name must contain only alphanumeric characters, spaces, hyphens, and underscores",
+    )
     .optional(),
   providers: z.record(z.string(), ProviderConfigSchema).optional(),
   defaultModel: ModelConfigSchema.optional(),
@@ -23,7 +26,10 @@ export const ResourceNameSchema = z
 export const SecretNameSchema = z
   .string()
   .min(1, "name is required")
-  .regex(/^[A-Z0-9_]+$/, "name must contain only uppercase alphanumeric characters and underscores");
+  .regex(
+    /^[A-Z0-9_]+$/,
+    "name must contain only uppercase alphanumeric characters and underscores",
+  );
 
 // Secret value schema
 export const SecretValueSchema = z.object({
