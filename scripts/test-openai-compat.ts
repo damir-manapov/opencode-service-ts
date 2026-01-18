@@ -81,13 +81,13 @@ async function main() {
   }
 
   // Test POST /v1/chat/completions (non-streaming)
-  console.log("\n📝 Step 3: Testing POST /v1/chat/completions (non-streaming)...");
+  const nonStreamingPrompt = "Say 'Hello from OpenCode Service!' in exactly those words.";
+  console.log(`\n📝 Step 3: Testing POST /v1/chat/completions (non-streaming)...`);
+  console.log(`   Prompt: "${nonStreamingPrompt}"`);
   try {
     const completion = await client.chat.completions.create({
       model: "openrouter/openai/gpt-4o-mini",
-      messages: [
-        { role: "user", content: "Say 'Hello from OpenCode Service!' in exactly those words." },
-      ],
+      messages: [{ role: "user", content: nonStreamingPrompt }],
       max_tokens: 50,
     });
 
@@ -101,11 +101,13 @@ async function main() {
   }
 
   // Test POST /v1/chat/completions (streaming)
-  console.log("\n📝 Step 4: Testing POST /v1/chat/completions (streaming)...");
+  const streamingPrompt = "Count from 1 to 5.";
+  console.log(`\n📝 Step 4: Testing POST /v1/chat/completions (streaming)...`);
+  console.log(`   Prompt: "${streamingPrompt}"`);
   try {
     const stream = await client.chat.completions.create({
       model: "openrouter/openai/gpt-4o-mini",
-      messages: [{ role: "user", content: "Count from 1 to 5." }],
+      messages: [{ role: "user", content: streamingPrompt }],
       max_tokens: 50,
       stream: true,
     });

@@ -115,7 +115,12 @@ export class OpencodeExecutorService implements OnModuleDestroy {
 
           if (event.type === "message.part.updated") {
             const props = event.properties as {
-              part?: { type?: string; tool?: string; metadata?: Record<string, unknown>; state?: string };
+              part?: {
+                type?: string;
+                tool?: string;
+                metadata?: Record<string, unknown>;
+                state?: string;
+              };
               delta?: string;
             };
             if (props.delta && props.part?.type === "text") {
@@ -204,7 +209,10 @@ export class OpencodeExecutorService implements OnModuleDestroy {
   /**
    * Get existing instance or create new one for tenant
    */
-  private async getOrCreateInstance(tenantId: string, workspacePath: string): Promise<TenantInstance> {
+  private async getOrCreateInstance(
+    tenantId: string,
+    workspacePath: string,
+  ): Promise<TenantInstance> {
     const existing = this.instances.get(tenantId);
     if (existing) {
       this.logger.debug(`Reusing OpenCode instance for tenant ${tenantId}`);
@@ -256,7 +264,9 @@ export class OpencodeExecutorService implements OnModuleDestroy {
 
     // Set new idle timer
     tenantInstance.idleTimer = setTimeout(() => {
-      this.logger.log(`Tenant ${tenantId} idle for ${this.idleTimeoutMs / 1000}s, shutting down instance`);
+      this.logger.log(
+        `Tenant ${tenantId} idle for ${this.idleTimeoutMs / 1000}s, shutting down instance`,
+      );
       this.shutdownInstance(tenantId);
     }, this.idleTimeoutMs);
   }

@@ -2,7 +2,7 @@
 /**
  * Test OpenCode SDK directly
  * Usage: bun scripts/test-opencode-direct.ts [prompt]
- * 
+ *
  * Examples:
  *   bun scripts/test-opencode-direct.ts
  *   bun scripts/test-opencode-direct.ts "What is 2+2?"
@@ -31,14 +31,16 @@ async function main() {
   delete process.env.OPENROUTER_API_KEY;
 
   console.log("\n📝 Starting OpenCode server...");
-  
+
   // Check if server is already running (simulating service behavior)
   const existingServerUrl = "http://127.0.0.1:4096";
-  let client;
+  let client: Awaited<ReturnType<typeof createOpencode>>["client"] | null = null;
   let instance: Awaited<ReturnType<typeof createOpencode>> | null = null;
-  
+
   try {
-    const healthRes = await fetch(`${existingServerUrl}/global/health`, { signal: AbortSignal.timeout(2000) });
+    const healthRes = await fetch(`${existingServerUrl}/global/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
     if (healthRes.ok) {
       console.log("✅ Connecting to EXISTING OpenCode server (like service does)");
       const { createOpencodeClient } = await import("@opencode-ai/sdk");
@@ -55,7 +57,7 @@ async function main() {
     });
     client = instance.client;
   }
-  
+
   const baseUrl = instance ? `http://127.0.0.1:14999` : existingServerUrl;
   console.log("✅ OpenCode server started");
 
@@ -79,10 +81,10 @@ async function main() {
 
     // Create a temp directory like the service does - WITH GIT INIT
     const workspaceDir = `/tmp/opencode-workspaces/test-${Date.now()}`;
-    const fs = await import("fs/promises");
-    const { execSync } = await import("child_process");
+    const fs = await import("node:fs/promises");
+    const { execSync } = await import("node:child_process");
     await fs.mkdir(workspaceDir, { recursive: true });
-    
+
     // Initialize as git repo (OpenCode requires this for directory-based sessions)
     execSync("git init", { cwd: workspaceDir, stdio: "ignore" });
     console.log(`📁 Using workspace directory: ${workspaceDir} (git initialized)`);
@@ -93,10 +95,7 @@ async function main() {
       provider: { openrouter: {} },
       model: "openrouter/openai/gpt-4o-mini",
     };
-    await fs.writeFile(
-      `${workspaceDir}/opencode.json`,
-      JSON.stringify(opencodeConfig, null, 2),
-    );
+    await fs.writeFile(`${workspaceDir}/opencode.json`, JSON.stringify(opencodeConfig, null, 2));
     console.log("📝 Created opencode.json in workspace");
 
     // Set auth WITH directory (like the service does)
@@ -114,7 +113,9 @@ async function main() {
 
     // Check providers again after auth.set()
     const providersAfter = await client.provider.list();
-    console.log(`✅ Connected providers after auth: ${providersAfter.data?.connected?.join(", ") || "none"}`);
+    console.log(
+      `✅ Connected providers after auth: ${providersAfter.data?.connected?.join(", ") || "none"}`,
+    );
 
     // Create session WITHOUT directory parameter (causes hangs)
     // The auth.set() with directory is sufficient for context
@@ -225,7 +226,7 @@ async function main() {
       console.log("\n📝 Leaving existing server running");
     }
   }
-  
+
   // Force exit since event stream keeps process alive
   process.exit(0);
 }

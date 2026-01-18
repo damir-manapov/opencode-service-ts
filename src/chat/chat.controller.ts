@@ -67,8 +67,9 @@ export class ChatController {
   private extractErrorCode(error: unknown): string | undefined {
     if (error instanceof Error) {
       // Check if error message contains a code (e.g., "insufficient_quota")
-      const codeMatch = error.message.match(/"code"\s*:\s*"([^"]+)"/)
-        || error.message.match(/"type"\s*:\s*"([^"]+)"/);
+      const codeMatch =
+        error.message.match(/"code"\s*:\s*"([^"]+)"/) ||
+        error.message.match(/"type"\s*:\s*"([^"]+)"/);
       if (codeMatch) {
         return codeMatch[1];
       }

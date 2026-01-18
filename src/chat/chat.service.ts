@@ -35,7 +35,10 @@ export class ChatService {
   /**
    * Build common request context (tenant, model, workspace config, credentials)
    */
-  private async buildContext(tenantId: string, request: ChatCompletionRequest): Promise<RequestContext> {
+  private async buildContext(
+    tenantId: string,
+    request: ChatCompletionRequest,
+  ): Promise<RequestContext> {
     const tenant = await this.tenantService.getTenant(tenantId);
     if (!tenant) {
       throw new TenantNotFoundError(tenantId);

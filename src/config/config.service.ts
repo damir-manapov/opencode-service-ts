@@ -29,8 +29,16 @@ export class ConfigService {
       port: this.parsePort(),
       dataDir: process.env["DATA_DIR"] ?? CONFIG_DEFAULTS.DATA_DIR,
       predefinedDir: process.env["PREDEFINED_DIR"] ?? CONFIG_DEFAULTS.PREDEFINED_DIR,
-      sessionTtl: this.parseDuration("SESSION_TTL", CONFIG_DEFAULTS.SESSION_TTL, CONFIG_DEFAULTS.SESSION_TTL_MS),
-      idleTimeout: this.parseDuration("IDLE_TIMEOUT", CONFIG_DEFAULTS.IDLE_TIMEOUT, CONFIG_DEFAULTS.IDLE_TIMEOUT_MS),
+      sessionTtl: this.parseDuration(
+        "SESSION_TTL",
+        CONFIG_DEFAULTS.SESSION_TTL,
+        CONFIG_DEFAULTS.SESSION_TTL_MS,
+      ),
+      idleTimeout: this.parseDuration(
+        "IDLE_TIMEOUT",
+        CONFIG_DEFAULTS.IDLE_TIMEOUT,
+        CONFIG_DEFAULTS.IDLE_TIMEOUT_MS,
+      ),
       adminTokens: this.parseAdminTokens(),
       allowSelfRegistration: process.env["ALLOW_SELF_REGISTRATION"] === "true",
     };
@@ -52,9 +60,7 @@ export class ConfigService {
     const value = process.env[envKey] ?? defaultValue;
     const match = value.match(/^(\d+)(m|h|d)$/);
     if (!match) {
-      console.warn(
-        `Invalid ${envKey} format: ${value}, using default ${defaultValue}`,
-      );
+      console.warn(`Invalid ${envKey} format: ${value}, using default ${defaultValue}`);
       return defaultMs;
     }
     const num = Number.parseInt(match[1] ?? "0", 10);
