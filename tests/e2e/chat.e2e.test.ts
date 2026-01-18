@@ -37,6 +37,9 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
       });
 
       expect(response.status).toBe(401);
+      const body = response.body as { error: { message: string; type: string } };
+      expect(body.error).toBeDefined();
+      expect(body.error.type).toBe("authentication_error");
     });
 
     it("should reject requests with invalid token", async () => {
@@ -49,9 +52,11 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
       });
 
       expect(response.status).toBe(401);
+      const body = response.body as { error: { type: string } };
+      expect(body.error.type).toBe("authentication_error");
     });
 
-    // Request validation tests (should return 400 for invalid requests)
+    // Request validation tests (should return 400 for invalid requests with OpenAI error format)
     describe("Request validation", () => {
       it("should reject request without model", async () => {
         const response = await httpRequest("POST", "/v1/chat/completions", {
@@ -62,7 +67,10 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect(response.status).toBe(400);
-        expect(response.text).toContain("model");
+        const body = response.body as { error: { message: string; type: string } };
+        expect(body.error).toBeDefined();
+        expect(body.error.message).toContain("model");
+        expect(body.error.type).toBe("invalid_request_error");
       });
 
       it("should reject request with empty model", async () => {
@@ -75,6 +83,8 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect(response.status).toBe(400);
+        const body = response.body as { error: { type: string } };
+        expect(body.error.type).toBe("invalid_request_error");
       });
 
       it("should reject request without messages", async () => {
@@ -86,7 +96,9 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect(response.status).toBe(400);
-        expect(response.text).toContain("messages");
+        const body = response.body as { error: { message: string; type: string } };
+        expect(body.error.message).toContain("messages");
+        expect(body.error.type).toBe("invalid_request_error");
       });
 
       it("should reject request with empty messages array", async () => {
@@ -99,6 +111,8 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect(response.status).toBe(400);
+        const body = response.body as { error: { type: string } };
+        expect(body.error.type).toBe("invalid_request_error");
       });
 
       it("should reject request with invalid message role", async () => {
@@ -111,7 +125,9 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect(response.status).toBe(400);
-        expect(response.text).toContain("role");
+        const body = response.body as { error: { message: string; type: string } };
+        expect(body.error.message).toContain("role");
+        expect(body.error.type).toBe("invalid_request_error");
       });
 
       it("should reject request with invalid temperature", async () => {
@@ -125,6 +141,8 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
         });
 
         expect(response.status).toBe(400);
+        const body = response.body as { error: { type: string } };
+        expect(body.error.type).toBe("invalid_request_error");
       });
     });
 

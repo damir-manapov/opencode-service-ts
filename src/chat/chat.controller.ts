@@ -7,6 +7,7 @@ import {
   Post,
   Req,
   Res,
+  UseFilters,
   UseGuards,
 } from "@nestjs/common";
 import type { Response } from "express";
@@ -15,9 +16,11 @@ import { formatZodError } from "../common/validation.utils.js";
 import { ChatCompletionRequestSchema } from "./chat.schema.js";
 import { ChatService } from "./chat.service.js";
 import type { ChatCompletionResponse } from "./chat.types.js";
+import { OpenAIErrorFilter } from "./openai-error.filter.js";
 
 @Controller("v1/chat")
 @UseGuards(TenantAuthGuard)
+@UseFilters(OpenAIErrorFilter)
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
