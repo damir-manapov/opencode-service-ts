@@ -57,10 +57,10 @@ describe("Models API (e2e)", () => {
       };
 
       if (body.data.length > 0) {
-        const model = body.data[0]!;
-        expect(model.id).toBeDefined();
-        expect(model.object).toBe("model");
-        expect(model.owned_by).toBeDefined();
+        const model = body.data[0];
+        expect(model?.id).toBeDefined();
+        expect(model?.object).toBe("model");
+        expect(model?.owned_by).toBeDefined();
       }
     });
   });

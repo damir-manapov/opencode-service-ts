@@ -2,7 +2,6 @@ import type { ModelConfig, ProviderConfig } from "../tenant/tenant.types.js";
 
 export interface WorkspaceConfig {
   tenantId: string;
-  sessionId?: string;
   providers: Record<string, ProviderConfig>;
   defaultModel?: ModelConfig;
   requestModel?: ModelConfig;

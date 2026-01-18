@@ -126,19 +126,6 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
       expect([200, 500]).toContain(response.status);
     });
 
-    it("should accept request with x-session-id extension", async () => {
-      const response = await httpRequest("POST", "/v1/chat/completions", {
-        token: tenantToken,
-        body: {
-          model: "claude-sonnet",
-          "x-session-id": "test-session-123",
-          messages: [{ role: "user", content: "Hello" }],
-        },
-      });
-
-      expect([200, 500]).toContain(response.status);
-    });
-
     it("should accept request with x-tools extension", async () => {
       const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,

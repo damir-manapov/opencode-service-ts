@@ -11,7 +11,7 @@ export class WorkspaceService {
    * Generate a temporary workspace with OpenCode configuration
    */
   async generateWorkspace(config: WorkspaceConfig): Promise<GeneratedWorkspace> {
-    const workspaceId = config.sessionId ?? randomUUID();
+    const workspaceId = randomUUID();
     const workspacePath = path.join(os.tmpdir(), "opencode-workspaces", workspaceId);
 
     // Create workspace directories
@@ -41,10 +41,7 @@ export class WorkspaceService {
     return {
       path: workspacePath,
       cleanup: async () => {
-        // Only cleanup if not a persistent session
-        if (!config.sessionId) {
-          await fs.rm(workspacePath, { recursive: true, force: true });
-        }
+        await fs.rm(workspacePath, { recursive: true, force: true });
       },
     };
   }

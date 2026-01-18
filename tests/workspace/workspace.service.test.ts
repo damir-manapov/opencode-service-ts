@@ -156,23 +156,7 @@ describe("WorkspaceService", () => {
       expect(parsedConfig.model).toBe("openai/gpt-4");
     });
 
-    it("should use sessionId for workspace path if provided", async () => {
-      const config: WorkspaceConfig = {
-        tenantId: "test-tenant",
-        sessionId: "my-session-123",
-        providers: {},
-        tools: [],
-        agents: [],
-        secrets: {},
-      };
-
-      const workspace = await service.generateWorkspace(config);
-      cleanupPaths.push(workspace.path);
-
-      expect(workspace.path).toContain("my-session-123");
-    });
-
-    it("cleanup should remove workspace when no sessionId", async () => {
+    it("cleanup should remove workspace", async () => {
       const config: WorkspaceConfig = {
         tenantId: "test-tenant",
         providers: {},
@@ -200,30 +184,6 @@ describe("WorkspaceService", () => {
         .then(() => true)
         .catch(() => false);
       expect(exists2).toBe(false);
-    });
-
-    it("cleanup should keep workspace when sessionId is provided", async () => {
-      const config: WorkspaceConfig = {
-        tenantId: "test-tenant",
-        sessionId: "persistent-session",
-        providers: {},
-        tools: [],
-        agents: [],
-        secrets: {},
-      };
-
-      const workspace = await service.generateWorkspace(config);
-      cleanupPaths.push(workspace.path);
-
-      // Cleanup (should not delete)
-      await workspace.cleanup();
-
-      // Verify it still exists
-      const exists = await fs
-        .stat(workspace.path)
-        .then(() => true)
-        .catch(() => false);
-      expect(exists).toBe(true);
     });
   });
 });

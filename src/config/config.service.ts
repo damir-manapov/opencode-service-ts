@@ -4,8 +4,6 @@ export const CONFIG_DEFAULTS = {
   PORT: 3000,
   DATA_DIR: "./data",
   PREDEFINED_DIR: "./predefined",
-  SESSION_TTL: "24h",
-  SESSION_TTL_MS: 24 * 60 * 60 * 1000,
   IDLE_TIMEOUT: "5m",
   IDLE_TIMEOUT_MS: 5 * 60 * 1000,
 } as const;
@@ -14,7 +12,6 @@ export interface Config {
   port: number;
   dataDir: string;
   predefinedDir: string;
-  sessionTtl: number; // in milliseconds
   idleTimeout: number; // in milliseconds - OpenCode instance idle timeout
   adminTokens: string[];
   allowSelfRegistration: boolean;
@@ -29,11 +26,6 @@ export class ConfigService {
       port: this.parsePort(),
       dataDir: process.env["DATA_DIR"] ?? CONFIG_DEFAULTS.DATA_DIR,
       predefinedDir: process.env["PREDEFINED_DIR"] ?? CONFIG_DEFAULTS.PREDEFINED_DIR,
-      sessionTtl: this.parseDuration(
-        "SESSION_TTL",
-        CONFIG_DEFAULTS.SESSION_TTL,
-        CONFIG_DEFAULTS.SESSION_TTL_MS,
-      ),
       idleTimeout: this.parseDuration(
         "IDLE_TIMEOUT",
         CONFIG_DEFAULTS.IDLE_TIMEOUT,

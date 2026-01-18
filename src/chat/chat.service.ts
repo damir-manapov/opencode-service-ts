@@ -50,7 +50,6 @@ export class ChatService {
 
     const workspaceConfig: WorkspaceConfig = {
       tenantId,
-      sessionId: undefined,
       providers: tenant.providers,
       defaultModel: tenant.defaultModel,
       requestModel: modelSelection,

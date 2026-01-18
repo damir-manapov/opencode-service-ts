@@ -96,7 +96,6 @@ ADMIN_TOKENS=admin_token1,admin_token2    # Comma-separated for rotation
 PORT=3000
 DATA_DIR=./data
 PREDEFINED_DIR=./predefined
-SESSION_TTL=24h                            # Format: 30m, 24h, 7d
 IDLE_TIMEOUT=5m                            # Per-tenant OpenCode instance timeout
 ALLOW_SELF_REGISTRATION=false
 ```

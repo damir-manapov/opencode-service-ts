@@ -84,9 +84,9 @@ describe("OpenCode Integration (real execution)", () => {
         expect(body.id).toBeDefined();
         expect(body.object).toBe("chat.completion");
         expect(body.choices).toHaveLength(1);
-        expect(body.choices[0]!.message.role).toBe("assistant");
-        expect(body.choices[0]!.message.content).toBeTruthy();
-        expect(body.choices[0]!.finish_reason).toBe("stop");
+        expect(body.choices[0]?.message.role).toBe("assistant");
+        expect(body.choices[0]?.message.content).toBeTruthy();
+        expect(body.choices[0]?.finish_reason).toBe("stop");
       }
     }, 60000); // 60s timeout for LLM response
 
@@ -108,7 +108,7 @@ describe("OpenCode Integration (real execution)", () => {
         const body = response.body as {
           choices: Array<{ message: { content: string } }>;
         };
-        expect(body.choices[0]!.message.content).toContain("4");
+        expect(body.choices[0]?.message.content).toContain("4");
       }
     }, 60000);
   });

@@ -33,38 +33,6 @@ describe("ConfigService", () => {
     });
   });
 
-  describe("sessionTtl", () => {
-    it("should default to CONFIG_DEFAULTS.SESSION_TTL_MS", () => {
-      delete process.env["SESSION_TTL"];
-      const config = new ConfigService();
-      expect(config.get("sessionTtl")).toBe(CONFIG_DEFAULTS.SESSION_TTL_MS);
-    });
-
-    it("should parse minutes", () => {
-      process.env["SESSION_TTL"] = "30m";
-      const config = new ConfigService();
-      expect(config.get("sessionTtl")).toBe(30 * 60 * 1000);
-    });
-
-    it("should parse hours", () => {
-      process.env["SESSION_TTL"] = "12h";
-      const config = new ConfigService();
-      expect(config.get("sessionTtl")).toBe(12 * 60 * 60 * 1000);
-    });
-
-    it("should parse days", () => {
-      process.env["SESSION_TTL"] = "7d";
-      const config = new ConfigService();
-      expect(config.get("sessionTtl")).toBe(7 * 24 * 60 * 60 * 1000);
-    });
-
-    it("should default to CONFIG_DEFAULTS.SESSION_TTL_MS for invalid format", () => {
-      process.env["SESSION_TTL"] = "invalid";
-      const config = new ConfigService();
-      expect(config.get("sessionTtl")).toBe(CONFIG_DEFAULTS.SESSION_TTL_MS);
-    });
-  });
-
   describe("adminTokens", () => {
     it("should default to empty array", () => {
       delete process.env["ADMIN_TOKENS"];
