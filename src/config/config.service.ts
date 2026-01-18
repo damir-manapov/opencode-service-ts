@@ -6,6 +6,8 @@ export const CONFIG_DEFAULTS = {
   PREDEFINED_DIR: "./predefined",
   SESSION_TTL: "24h",
   SESSION_TTL_MS: 24 * 60 * 60 * 1000,
+  IDLE_TIMEOUT: "5m",
+  IDLE_TIMEOUT_MS: 5 * 60 * 1000,
 } as const;
 
 export interface Config {
@@ -13,6 +15,7 @@ export interface Config {
   dataDir: string;
   predefinedDir: string;
   sessionTtl: number; // in milliseconds
+  idleTimeout: number; // in milliseconds - OpenCode instance idle timeout
   adminTokens: string[];
   allowSelfRegistration: boolean;
 }
@@ -26,7 +29,8 @@ export class ConfigService {
       port: this.parsePort(),
       dataDir: process.env["DATA_DIR"] ?? CONFIG_DEFAULTS.DATA_DIR,
       predefinedDir: process.env["PREDEFINED_DIR"] ?? CONFIG_DEFAULTS.PREDEFINED_DIR,
-      sessionTtl: this.parseSessionTtl(),
+      sessionTtl: this.parseDuration("SESSION_TTL", CONFIG_DEFAULTS.SESSION_TTL, CONFIG_DEFAULTS.SESSION_TTL_MS),
+      idleTimeout: this.parseDuration("IDLE_TIMEOUT", CONFIG_DEFAULTS.IDLE_TIMEOUT, CONFIG_DEFAULTS.IDLE_TIMEOUT_MS),
       adminTokens: this.parseAdminTokens(),
       allowSelfRegistration: process.env["ALLOW_SELF_REGISTRATION"] === "true",
     };
@@ -44,26 +48,26 @@ export class ConfigService {
     return parsed;
   }
 
-  private parseSessionTtl(): number {
-    const ttl = process.env["SESSION_TTL"] ?? CONFIG_DEFAULTS.SESSION_TTL;
-    const match = ttl.match(/^(\d+)(m|h|d)$/);
+  private parseDuration(envKey: string, defaultValue: string, defaultMs: number): number {
+    const value = process.env[envKey] ?? defaultValue;
+    const match = value.match(/^(\d+)(m|h|d)$/);
     if (!match) {
       console.warn(
-        `Invalid SESSION_TTL format: ${ttl}, using default ${CONFIG_DEFAULTS.SESSION_TTL}`,
+        `Invalid ${envKey} format: ${value}, using default ${defaultValue}`,
       );
-      return CONFIG_DEFAULTS.SESSION_TTL_MS;
+      return defaultMs;
     }
-    const value = Number.parseInt(match[1] ?? "24", 10);
+    const num = Number.parseInt(match[1] ?? "0", 10);
     const unit = match[2];
     switch (unit) {
       case "m":
-        return value * 60 * 1000;
+        return num * 60 * 1000;
       case "h":
-        return value * 60 * 60 * 1000;
+        return num * 60 * 60 * 1000;
       case "d":
-        return value * 24 * 60 * 60 * 1000;
+        return num * 24 * 60 * 60 * 1000;
       default:
-        return CONFIG_DEFAULTS.SESSION_TTL_MS;
+        return defaultMs;
     }
   }
 

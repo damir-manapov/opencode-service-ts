@@ -6,13 +6,11 @@ import type {
   ModelSelection,
   StreamChunk,
 } from "../chat/chat.types.js";
+import { ConfigService } from "../config/config.service.js";
 import type { GeneratedWorkspace } from "../workspace/workspace.types.js";
 
 type OpencodeInstance = Awaited<ReturnType<typeof createOpencode>>;
 type OpencodeClient = OpencodeInstance["client"];
-
-/** How long an instance can be idle before shutdown (5 minutes) */
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface TenantInstance {
   instance: OpencodeInstance;
@@ -36,10 +34,16 @@ export class OpencodeExecutorService implements OnModuleDestroy {
   private readonly logger = new Logger(OpencodeExecutorService.name);
   private readonly hostname = "127.0.0.1";
   private readonly timeout = 30000;
+  private readonly idleTimeoutMs: number;
   private nextPort = 14096;
 
   /** Map of tenantId -> running OpenCode instance */
   private readonly instances = new Map<string, TenantInstance>();
+
+  constructor(private readonly configService: ConfigService) {
+    this.idleTimeoutMs = this.configService.get("idleTimeout");
+    this.logger.log(`Idle timeout: ${this.idleTimeoutMs / 1000}s`);
+  }
 
   async onModuleDestroy(): Promise<void> {
     await this.shutdownAll();
@@ -252,9 +256,9 @@ export class OpencodeExecutorService implements OnModuleDestroy {
 
     // Set new idle timer
     tenantInstance.idleTimer = setTimeout(() => {
-      this.logger.log(`Tenant ${tenantId} idle for ${IDLE_TIMEOUT_MS / 1000}s, shutting down instance`);
+      this.logger.log(`Tenant ${tenantId} idle for ${this.idleTimeoutMs / 1000}s, shutting down instance`);
       this.shutdownInstance(tenantId);
-    }, IDLE_TIMEOUT_MS);
+    }, this.idleTimeoutMs);
   }
 
   private getNextPort(): number {

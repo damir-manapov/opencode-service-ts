@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
 /**
  * Test OpenCode SDK directly
- * Usage: bun scripts/test-opencode-direct.ts
+ * Usage: bun scripts/test-opencode-direct.ts [prompt]
+ * 
+ * Examples:
+ *   bun scripts/test-opencode-direct.ts
+ *   bun scripts/test-opencode-direct.ts "What is 2+2?"
  *
  * This spins up a new OpenCode server and tests prompting directly.
  */
@@ -9,6 +13,8 @@
 import { createOpencode } from "@opencode-ai/sdk";
 
 const OPENROUTER_API_KEY = process.env._OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
+const DEFAULT_PROMPT = "Say 'Hello from OpenCode!' in exactly those words.";
+const userPrompt = process.argv[2] || DEFAULT_PROMPT;
 
 async function main() {
   console.log("🧪 Testing OpenCode SDK directly (simulating service behavior)\n");
@@ -44,13 +50,13 @@ async function main() {
     console.log("📝 No existing server, starting new one...");
     instance = await createOpencode({
       hostname: "127.0.0.1",
-      port: 14096, // Use different port to avoid conflicts
+      port: 14999, // Use different port to avoid conflicts with service
       timeout: 30000,
     });
     client = instance.client;
   }
   
-  const baseUrl = instance ? `http://127.0.0.1:14096` : existingServerUrl;
+  const baseUrl = instance ? `http://127.0.0.1:14999` : existingServerUrl;
   console.log("✅ OpenCode server started");
 
   try {
@@ -70,22 +76,6 @@ async function main() {
       const methodTypes = (methods as Array<{ type: string }>).map((m) => m.type);
       console.log(`   ${providerID}: ${methodTypes.join(", ")}`);
     }
-
-    // Test auth.set() API explicitly
-    console.log("\n📝 Testing auth.set() for openrouter...");
-    const authResponse = await client.auth.set({
-      path: { id: "openrouter" },
-      body: { type: "api", key: OPENROUTER_API_KEY },
-    });
-    if (authResponse.error) {
-      console.error(`❌ auth.set() failed: ${JSON.stringify(authResponse.error)}`);
-    } else {
-      console.log(`✅ auth.set() succeeded: ${JSON.stringify(authResponse.data)}`);
-    }
-
-    // Check providers again after auth.set()
-    const providersAfter = await client.provider.list();
-    console.log(`✅ Connected providers after auth: ${providersAfter.data?.connected?.join(", ") || "none"}`);
 
     // Create a temp directory like the service does - WITH GIT INIT
     const workspaceDir = `/tmp/opencode-workspaces/test-${Date.now()}`;
@@ -109,10 +99,27 @@ async function main() {
     );
     console.log("📝 Created opencode.json in workspace");
 
-    // Create session WITH directory now that it's a git repo
-    console.log("\n📝 Creating session (with directory)...");
-    const sessionResponse = await client.session.create({
+    // Set auth WITH directory (like the service does)
+    console.log(`\n📝 Setting auth for openrouter (with directory)...`);
+    const authResponse = await client.auth.set({
+      path: { id: "openrouter" },
       query: { directory: workspaceDir },
+      body: { type: "api", key: OPENROUTER_API_KEY },
+    });
+    if (authResponse.error) {
+      console.error(`❌ auth.set() failed: ${JSON.stringify(authResponse.error)}`);
+    } else {
+      console.log(`✅ auth.set() succeeded`);
+    }
+
+    // Check providers again after auth.set()
+    const providersAfter = await client.provider.list();
+    console.log(`✅ Connected providers after auth: ${providersAfter.data?.connected?.join(", ") || "none"}`);
+
+    // Create session WITHOUT directory parameter (causes hangs)
+    // The auth.set() with directory is sufficient for context
+    console.log("\n📝 Creating session (without directory - avoids hanging)...");
+    const sessionResponse = await client.session.create({
       body: { title: "Direct Test" },
     });
 
@@ -131,12 +138,12 @@ async function main() {
       console.log("✅ Subscribed to events");
 
       // Send prompt
-      console.log("\n📝 Sending prompt...");
+      console.log(`\n📝 Sending prompt: "${userPrompt}"...`);
       await client.session.promptAsync({
         path: { id: session.id },
         body: {
           model: { providerID: "openrouter", modelID: "openai/gpt-4o-mini" },
-          parts: [{ type: "text", text: "Say 'Hello from OpenCode!' in exactly those words." }],
+          parts: [{ type: "text", text: userPrompt }],
         },
       });
       console.log("✅ Prompt sent");

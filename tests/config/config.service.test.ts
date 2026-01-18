@@ -128,4 +128,30 @@ describe("ConfigService", () => {
       expect(config.get("predefinedDir")).toBe("/custom/predefined");
     });
   });
+
+  describe("idleTimeout", () => {
+    it("should default to CONFIG_DEFAULTS.IDLE_TIMEOUT_MS", () => {
+      delete process.env["IDLE_TIMEOUT"];
+      const config = new ConfigService();
+      expect(config.get("idleTimeout")).toBe(CONFIG_DEFAULTS.IDLE_TIMEOUT_MS);
+    });
+
+    it("should parse minutes", () => {
+      process.env["IDLE_TIMEOUT"] = "10m";
+      const config = new ConfigService();
+      expect(config.get("idleTimeout")).toBe(10 * 60 * 1000);
+    });
+
+    it("should parse hours", () => {
+      process.env["IDLE_TIMEOUT"] = "1h";
+      const config = new ConfigService();
+      expect(config.get("idleTimeout")).toBe(60 * 60 * 1000);
+    });
+
+    it("should default to CONFIG_DEFAULTS.IDLE_TIMEOUT_MS for invalid format", () => {
+      process.env["IDLE_TIMEOUT"] = "invalid";
+      const config = new ConfigService();
+      expect(config.get("idleTimeout")).toBe(CONFIG_DEFAULTS.IDLE_TIMEOUT_MS);
+    });
+  });
 });
