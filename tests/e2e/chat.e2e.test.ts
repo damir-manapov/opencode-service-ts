@@ -279,21 +279,27 @@ describe("Chat Completions API (OpenAI-compatible)", () => {
   });
 });
 
+const OPENROUTER_API_KEY = process.env["E2E_OPENROUTER_API_KEY"];
+
+function requireApiKey(): void {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error(
+      "E2E_OPENROUTER_API_KEY environment variable is required. Set it to run these tests.",
+    );
+  }
+}
+
 /**
  * Response Format Tests
  * These require a real API key to verify actual response structure
  */
 describe("Chat Completions Response Format", () => {
-  const OPENROUTER_API_KEY = process.env["E2E_OPENROUTER_API_KEY"];
-
   let client: TestClient;
   let tenantToken: string;
   let tenantId: string;
 
   beforeAll(async () => {
-    if (!OPENROUTER_API_KEY) {
-      return; // Skip setup if no API key
-    }
+    requireApiKey();
 
     client = new TestClient();
     const result = await client.createTenant("Response Format Test", {
@@ -313,11 +319,6 @@ describe("Chat Completions Response Format", () => {
 
   describe("Non-streaming response structure", () => {
     it("should match OpenAI format with all required fields", async () => {
-      if (!OPENROUTER_API_KEY) {
-        console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-        return;
-      }
-
       const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
@@ -382,11 +383,6 @@ describe("Chat Completions Response Format", () => {
     }, 60000);
 
     it("should return finish_reason 'stop' for normal completion", async () => {
-      if (!OPENROUTER_API_KEY) {
-        console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-        return;
-      }
-
       const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
@@ -408,11 +404,6 @@ describe("Chat Completions Response Format", () => {
     }, 60000);
 
     it("should return finish_reason 'length' when max_tokens exceeded", async () => {
-      if (!OPENROUTER_API_KEY) {
-        console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-        return;
-      }
-
       const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
@@ -438,11 +429,6 @@ describe("Chat Completions Response Format", () => {
 
   describe("Streaming response format", () => {
     it("should return SSE format with proper content-type", async () => {
-      if (!OPENROUTER_API_KEY) {
-        console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-        return;
-      }
-
       const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
@@ -463,11 +449,6 @@ describe("Chat Completions Response Format", () => {
     }, 60000);
 
     it("should end stream with data: [DONE]", async () => {
-      if (!OPENROUTER_API_KEY) {
-        console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-        return;
-      }
-
       const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
@@ -493,11 +474,6 @@ describe("Chat Completions Response Format", () => {
     }, 60000);
 
     it("should have valid SSE chunk structure", async () => {
-      if (!OPENROUTER_API_KEY) {
-        console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-        return;
-      }
-
       const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
@@ -547,8 +523,6 @@ describe("Chat Completions Response Format", () => {
  * Verify that agents are applied to chat completions
  */
 describe("Chat Completions with Agent", () => {
-  const OPENROUTER_API_KEY = process.env["E2E_OPENROUTER_API_KEY"];
-
   let client: TestClient;
   let tenantToken: string;
   let tenantId: string;
@@ -562,9 +536,7 @@ You are a test agent. You MUST prefix EVERY response with exactly "${AGENT_MARKE
 After the marker, respond normally to the user's question.`;
 
   beforeAll(async () => {
-    if (!OPENROUTER_API_KEY) {
-      return;
-    }
+    requireApiKey();
 
     client = new TestClient();
     const result = await client.createTenant("Agent Test Tenant", {
@@ -590,11 +562,6 @@ After the marker, respond normally to the user's question.`;
   });
 
   it("should have the agent registered", async () => {
-    if (!OPENROUTER_API_KEY) {
-      console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-      return;
-    }
-
     const response = await httpRequest("GET", "/v1/tenant/agents", {
       token: tenantToken,
     });
@@ -604,11 +571,6 @@ After the marker, respond normally to the user's question.`;
   });
 
   it("should use agent and include marker in response", async () => {
-    if (!OPENROUTER_API_KEY) {
-      console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-      return;
-    }
-
     const response = await httpRequest("POST", "/v1/chat/completions", {
       token: tenantToken,
       body: {
@@ -631,11 +593,6 @@ After the marker, respond normally to the user's question.`;
   }, 60000);
 
   it("should use agent in streaming response", async () => {
-    if (!OPENROUTER_API_KEY) {
-      console.log("Skipping: E2E_OPENROUTER_API_KEY not set");
-      return;
-    }
-
     const response = await httpRequest("POST", "/v1/chat/completions", {
       token: tenantToken,
       body: {
