@@ -327,10 +327,7 @@ describe("Chat Completions Response Format", () => {
         },
       });
 
-      if (response.status !== 200) {
-        console.log("Skipping response validation: execution failed");
-        return;
-      }
+      expect(response.status).toBe(200);
 
       const body = response.body as {
         id: string;
@@ -391,10 +388,7 @@ describe("Chat Completions Response Format", () => {
         },
       });
 
-      if (response.status !== 200) {
-        console.log("Skipping: execution failed");
-        return;
-      }
+      expect(response.status).toBe(200);
 
       const body = response.body as {
         choices: Array<{ finish_reason: string }>;
@@ -413,10 +407,7 @@ describe("Chat Completions Response Format", () => {
         },
       });
 
-      if (response.status !== 200) {
-        console.log("Skipping: execution failed");
-        return;
-      }
+      expect(response.status).toBe(200);
 
       const body = response.body as {
         choices: Array<{ finish_reason: string }>;
@@ -438,10 +429,7 @@ describe("Chat Completions Response Format", () => {
         },
       });
 
-      if (response.status !== 200) {
-        console.log("Skipping: execution failed");
-        return;
-      }
+      expect(response.status).toBe(200);
 
       // Should be SSE content type
       const contentType = response.headers.get("content-type");
@@ -458,16 +446,8 @@ describe("Chat Completions Response Format", () => {
         },
       });
 
-      if (response.status !== 200) {
-        console.log("Skipping: execution failed");
-        return;
-      }
-
-      // Check if response contains error
-      if (response.text.includes('"error"')) {
-        console.log("Skipping: stream returned error");
-        return;
-      }
+      expect(response.status).toBe(200);
+      expect(response.text).not.toContain('"error"');
 
       // Stream should end with [DONE]
       expect(response.text).toContain("data: [DONE]");
@@ -483,10 +463,7 @@ describe("Chat Completions Response Format", () => {
         },
       });
 
-      if (response.status !== 200) {
-        console.log("Skipping: execution failed");
-        return;
-      }
+      expect(response.status).toBe(200);
 
       // Parse SSE chunks
       const lines = response.text.split("\n");
@@ -579,10 +556,7 @@ After the marker, respond normally to the user's question.`;
       },
     });
 
-    if (response.status !== 200) {
-      console.log("Skipping: execution failed with status", response.status);
-      return;
-    }
+    expect(response.status).toBe(200);
 
     const body = response.body as {
       choices: Array<{ message: { content: string } }>;
@@ -602,16 +576,8 @@ After the marker, respond normally to the user's question.`;
       },
     });
 
-    if (response.status !== 200) {
-      console.log("Skipping: execution failed");
-      return;
-    }
-
-    // Check if response contains error
-    if (response.text.includes('"error"')) {
-      console.log("Skipping: stream returned error");
-      return;
-    }
+    expect(response.status).toBe(200);
+    expect(response.text).not.toContain('"error"');
 
     // Concatenate all content from SSE chunks
     const lines = response.text.split("\n");
