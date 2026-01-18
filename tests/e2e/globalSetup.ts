@@ -1,8 +1,8 @@
 /**
  * E2E Global Setup - Auto-starts the server before tests
  */
-import { type ChildProcess, spawn } from "node:child_process";
-import { mkdir, rm } from "node:fs/promises";
+import { type ChildProcess, execSync, spawn } from "node:child_process";
+import { access, mkdir, rm } from "node:fs/promises";
 
 const E2E_PORT = 3333;
 const E2E_DATA_DIR = "/tmp/e2e-test-data";
@@ -10,6 +10,17 @@ const E2E_ADMIN_TOKEN = "test-admin-token";
 const SERVER_START_TIMEOUT = 30000;
 
 let serverProcess: ChildProcess | null = null;
+
+async function ensureBuilt(): Promise<void> {
+  const mainJs = "dist/src/main.js";
+  try {
+    await access(mainJs);
+  } catch {
+    console.log("📦 Building project...");
+    execSync("pnpm build", { cwd: process.cwd(), stdio: "inherit" });
+    console.log("✅ Build complete");
+  }
+}
 
 async function waitForServer(url: string, timeoutMs: number): Promise<void> {
   const start = Date.now();
@@ -45,6 +56,9 @@ export async function setup(): Promise<void> {
   }
 
   console.log("\n🚀 Starting test server...");
+
+  // Build if needed
+  await ensureBuilt();
 
   // Clean up data directory
   await rm(E2E_DATA_DIR, { recursive: true, force: true });
