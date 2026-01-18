@@ -215,12 +215,7 @@ Content-Type: application/json
       }
     }
   ],
-  "tool_choice": "auto",               // Optional: "none", "auto", "required"
-  
-  // Custom extensions (non-OpenAI):
-  "x-session-id": "optional-session",  // Persist conversation state
-  "x-agents": ["my-agent"],            // Enable custom agents
-  "x-tools": ["my-custom-tool"]        // Enable custom tools by name
+  "tool_choice": "auto"                // Optional: "none", "auto", "required"
 }
 ```
 
@@ -273,7 +268,37 @@ Models are specified as `provider/model`:
 - `google/gemini-pro`
 
 The provider must be configured in tenant's provider settings.
+
+### List Models (OpenAI-Compatible)
+
 ```
+GET /v1/models
+Authorization: Bearer ocs_{tenantId}_{secret}
+```
+
+#### Response
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "anthropic/claude-sonnet-4-20250514",
+      "object": "model",
+      "created": 1737475200,
+      "owned_by": "anthropic"
+    },
+    {
+      "id": "anthropic/claude-opus-4-20250514",
+      "object": "model",
+      "created": 1737475200,
+      "owned_by": "anthropic"
+    }
+  ]
+}
+```
+
+Returns models available to the tenant based on their configured providers.
 
 ### Session Management
 

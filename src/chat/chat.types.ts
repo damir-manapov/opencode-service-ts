@@ -43,10 +43,6 @@ export interface ChatCompletionRequest {
   stop?: string | string[];
   tools?: ToolDefinitionParam[];
   tool_choice?: "none" | "auto" | "required" | { type: "function"; function: { name: string } };
-  // Custom extensions (prefixed with x-)
-  "x-session-id"?: string;
-  "x-agents"?: string[];
-  "x-tools"?: string[];
 }
 
 // OpenAI-compatible response
