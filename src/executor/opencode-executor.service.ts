@@ -1,5 +1,5 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
-import { createOpencode, createOpencodeClient } from "@opencode-ai/sdk";
+import { Injectable, Logger } from "@nestjs/common";
+import { createOpencode } from "@opencode-ai/sdk";
 import type {
   ChatMessage,
   ExecutorResult,
@@ -8,124 +8,127 @@ import type {
 } from "../chat/chat.types.js";
 import type { GeneratedWorkspace } from "../workspace/workspace.types.js";
 
-type OpencodeClient = Awaited<ReturnType<typeof createOpencodeClient>>;
 type OpencodeInstance = Awaited<ReturnType<typeof createOpencode>>;
+type OpencodeClient = OpencodeInstance["client"];
 
 export interface ExecuteOptions {
   workspace: GeneratedWorkspace;
   messages: ChatMessage[];
-  environment: Record<string, string>;
   model?: ModelSelection;
-}
-
-// Re-export ExecutorResult from chat.types for external use
-// Re-export ExecutorResult from chat.types for external use
-export type { ExecutorResult } from "../chat/chat.types.js";
-
-/**
- * Check if OpenCode server is running at the given URL
- */
-async function isServerRunning(baseUrl: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${baseUrl}/global/health`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
+  /** Provider credentials in format { providerId: apiKey } */
+  providerCredentials?: Record<string, string>;
 }
 
 @Injectable()
-export class OpencodeExecutorService implements OnModuleDestroy {
+export class OpencodeExecutorService {
   private readonly logger = new Logger(OpencodeExecutorService.name);
-  private client: OpencodeClient | null = null;
-  private instance: OpencodeInstance | null = null;
-  private initPromise: Promise<OpencodeClient> | null = null;
-
   private readonly hostname = "127.0.0.1";
-  private readonly port = 4096;
   private readonly timeout = 30000;
-
-  async onModuleDestroy(): Promise<void> {
-    this.dispose();
-  }
+  private nextPort = 14096;
 
   /**
    * Execute OpenCode with the given workspace and messages
    * Returns the full response (non-streaming)
    */
   async execute(options: ExecuteOptions): Promise<ExecutorResult> {
-    const { workspace, messages, environment, model } = options;
+    const { workspace, messages, model, providerCredentials } = options;
 
-    // Inject environment variables for provider credentials
-    this.injectEnvironment(environment);
-
-    const client = await this.getClient(workspace.path);
-    const prompt = this.buildPrompt(messages);
-
-    // Parse model
-    const providerID = model?.providerId ?? "anthropic";
-    const modelID = model?.modelId ?? "claude-sonnet-4-20250514";
-
-    this.logger.debug(`Executing prompt in workspace: ${workspace.path}`);
-    this.logger.debug(`Model: ${providerID}/${modelID}`);
-
-    // Create a temporary session for this request with workspace directory
-    const createResponse = await client.session.create({
-      query: {
-        directory: workspace.path,
-      },
-      body: {
-        title: "OpenCode Service Request",
-      },
-    });
-
-    if (!createResponse.data) {
-      throw new Error("Failed to create OpenCode session");
-    }
-
-    const session = createResponse.data;
+    // Start a fresh OpenCode instance in the workspace directory for tenant isolation
+    const instance = await this.startFreshInstance(workspace.path);
+    const client = instance.client;
 
     try {
-      // Execute with OpenCode - tools are available from workspace/.opencode/tool/
-      const response = await client.session.prompt({
-        path: { id: session.id },
-        body: {
-          model: { providerID, modelID },
-          parts: [{ type: "text", text: prompt }],
-        },
-      });
-
-      if (!response.data) {
-        throw new Error("No response from OpenCode");
+      // Set provider credentials via OpenCode auth API
+      if (providerCredentials) {
+        await this.setProviderCredentials(client, providerCredentials, workspace.path);
       }
 
-      // Collect all text parts and tool calls from response
-      const textParts: string[] = [];
-      const toolCalls: ExecutorResult["toolCalls"] = [];
+      const prompt = this.buildPrompt(messages);
+      const providerID = model?.providerId ?? "anthropic";
+      const modelID = model?.modelId ?? "claude-sonnet-4-20250514";
 
-      for (const part of response.data.parts) {
-        if (part.type === "text") {
-          textParts.push(part.text);
-        } else if (part.type === "tool") {
-          toolCalls.push({
-            name: part.tool,
-            input: part.metadata ?? {},
-            output: part.state,
-          });
+      this.logger.log(`Executing: ${providerID}/${modelID} in ${workspace.path}`);
+
+      // Create session
+      const createResponse = await client.session.create({
+        body: { title: "OpenCode Service Request" },
+      });
+
+      if (!createResponse.data) {
+        const errorDetail =
+          createResponse.error && "detail" in createResponse.error
+            ? String(createResponse.error.detail)
+            : JSON.stringify(createResponse.error) || "Unknown error";
+        throw new Error(`Failed to create session: ${errorDetail}`);
+      }
+
+      const session = createResponse.data;
+
+      try {
+        // Subscribe to events and send prompt
+        const eventResponse = await client.event.subscribe();
+
+        await client.session.promptAsync({
+          path: { id: session.id },
+          body: {
+            model: { providerID, modelID },
+            parts: [{ type: "text", text: prompt }],
+          },
+        });
+
+        // Collect response from events
+        const textParts: string[] = [];
+        const toolCalls: ExecutorResult["toolCalls"] = [];
+        const RESPONSE_TIMEOUT = 30000;
+        const startTime = Date.now();
+
+        for await (const event of eventResponse.stream) {
+          if (Date.now() - startTime > RESPONSE_TIMEOUT) {
+            throw new Error(`Response timeout after ${RESPONSE_TIMEOUT}ms`);
+          }
+
+          if (event.type === "message.part.updated") {
+            const props = event.properties as {
+              part?: { type?: string; tool?: string; metadata?: Record<string, unknown>; state?: string };
+              delta?: string;
+            };
+            if (props.delta && props.part?.type === "text") {
+              textParts.push(props.delta);
+            }
+            if (props.part?.type === "tool" && props.part.tool) {
+              toolCalls.push({
+                name: props.part.tool,
+                input: props.part.metadata ?? {},
+                output: props.part.state,
+              });
+            }
+          }
+
+          if (event.type === "session.idle") {
+            const props = event.properties as { sessionID?: string };
+            if (props.sessionID === session.id) break;
+          }
+
+          if (event.type === "session.error") {
+            const props = event.properties as {
+              sessionID?: string;
+              error?: { message?: string; data?: { message?: string } };
+            };
+            if (props.sessionID === session.id) {
+              throw new Error(this.parseSessionError(props.error));
+            }
+          }
         }
-      }
 
-      return {
-        content: textParts.join("\n") || "No response generated",
-        toolCalls,
-      };
+        const content = textParts.join("") || "No response generated";
+        this.logger.log(`Response: ${content.slice(0, 100)}...`);
+
+        return { content, toolCalls };
+      } finally {
+        await client.session.delete({ path: { id: session.id } }).catch(() => {});
+      }
     } finally {
-      // Clean up session
-      await client.session.delete({ path: { id: session.id } }).catch(() => {
-        // Ignore cleanup errors
-      });
+      instance.server.close();
     }
   }
 
@@ -133,100 +136,92 @@ export class OpencodeExecutorService implements OnModuleDestroy {
    * Execute OpenCode with streaming response
    */
   async *executeStreaming(options: ExecuteOptions): AsyncGenerator<StreamChunk, void, undefined> {
-    // For now, execute fully and yield chunks
     // TODO: Implement proper streaming with SDK event subscription
     const result = await this.execute(options);
 
-    // Yield tool calls first
     for (const toolCall of result.toolCalls) {
-      yield {
-        type: "tool_call",
-        toolCall,
-      };
+      yield { type: "tool_call", toolCall };
     }
 
-    // Yield the final text
-    yield {
-      type: "text",
-      content: result.content,
-    };
-
+    yield { type: "text", content: result.content };
     yield { type: "done" };
   }
 
-  private async getClient(_workspacePath: string): Promise<OpencodeClient> {
-    if (this.client) {
-      return this.client;
-    }
+  /**
+   * Start a fresh OpenCode instance in a specific workspace directory
+   */
+  private async startFreshInstance(workspacePath: string): Promise<OpencodeInstance> {
+    const port = this.getNextPort();
+    const originalCwd = process.cwd();
 
-    if (this.initPromise) {
-      return this.initPromise;
-    }
-
-    this.initPromise = this.initializeClient();
     try {
-      this.client = await this.initPromise;
-      return this.client;
+      process.chdir(workspacePath);
+      return await createOpencode({
+        hostname: this.hostname,
+        port,
+        timeout: this.timeout,
+      });
     } finally {
-      this.initPromise = null;
+      process.chdir(originalCwd);
     }
   }
 
-  private async initializeClient(): Promise<OpencodeClient> {
-    const baseUrl = `http://${this.hostname}:${this.port}`;
-
-    // Check if server is already running
-    const isRunning = await isServerRunning(baseUrl);
-
-    if (isRunning) {
-      this.logger.log("Connecting to existing OpenCode server");
-      return createOpencodeClient({ baseUrl });
-    }
-
-    this.logger.log("Starting new OpenCode server");
-
-    // Start new server
-    this.instance = await createOpencode({
-      hostname: this.hostname,
-      port: this.port,
-      timeout: this.timeout,
-    });
-
-    return this.instance.client;
+  private getNextPort(): number {
+    const port = this.nextPort++;
+    if (this.nextPort > 15000) this.nextPort = 14096;
+    return port;
   }
 
   private buildPrompt(messages: ChatMessage[]): string {
-    const parts: string[] = [];
+    return messages
+      .map((msg) => {
+        const role = msg.role.charAt(0).toUpperCase() + msg.role.slice(1);
+        return `${role}: ${msg.content}`;
+      })
+      .join("\n\n");
+  }
 
-    for (const msg of messages) {
-      if (msg.role === "system") {
-        parts.push(`System: ${msg.content}`);
-      } else if (msg.role === "user") {
-        parts.push(`User: ${msg.content}`);
-      } else if (msg.role === "assistant") {
-        parts.push(`Assistant: ${msg.content}`);
+  private async setProviderCredentials(
+    client: OpencodeClient,
+    credentials: Record<string, string>,
+    directory: string,
+  ): Promise<void> {
+    for (const [providerId, apiKey] of Object.entries(credentials)) {
+      const response = await client.auth.set({
+        path: { id: providerId },
+        query: { directory },
+        body: { type: "api", key: apiKey },
+      });
+      if (response.error) {
+        this.logger.warn(`Failed to set credentials for ${providerId}`);
       }
     }
-
-    return parts.join("\n\n");
   }
 
   /**
-   * Inject environment variables for provider credentials
+   * Parse session error to extract meaningful error message
    */
-  private injectEnvironment(env: Record<string, string>): void {
-    for (const [key, value] of Object.entries(env)) {
-      process.env[key] = value;
-    }
-  }
+  private parseSessionError(error: unknown): string {
+    if (!error || typeof error !== "object") return "Unknown session error";
 
-  dispose(): void {
-    if (this.instance?.server) {
-      this.logger.log("Shutting down OpenCode server");
-      this.instance.server.close();
+    const err = error as { message?: string; data?: { message?: string } };
+
+    if (err.data?.message) {
+      try {
+        const parsed = JSON.parse(err.data.message) as {
+          error?: { type?: string; message?: string; code?: string };
+          message?: string;
+        };
+        if (parsed.error?.message) {
+          const code = parsed.error.code || parsed.error.type;
+          return code ? `[${code}] ${parsed.error.message}` : parsed.error.message;
+        }
+        if (parsed.message) return parsed.message;
+      } catch {
+        return err.data.message;
+      }
     }
-    this.client = null;
-    this.instance = null;
-    this.initPromise = null;
+
+    return err.message ?? JSON.stringify(error);
   }
 }

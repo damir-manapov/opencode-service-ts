@@ -9,7 +9,7 @@ async function bootstrap(): Promise<void> {
   });
   // Enable raw body parsing for text/plain
   app.useBodyParser("text", { type: "text/plain", limit: "10mb" });
-  const port = process.env["PORT"] ?? 3001;
+  const port = process.env["PORT"] ?? 3000;
   await app.listen(port);
   console.log(`OpenCode Service running on http://localhost:${String(port)}`);
 }

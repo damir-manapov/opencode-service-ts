@@ -39,6 +39,7 @@
     "@nestjs/testing": "^11.1.12",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.9",
+    "openai": "^6.16.0",
     "typescript": "^5.7.3",
     "vitest": "^4.0.17"
   }

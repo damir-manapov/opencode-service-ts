@@ -372,7 +372,7 @@ GET /v1/predefined/agents/{name}       # Get predefined agent content
 ADMIN_TOKENS=admin_token1,admin_token2    # Comma-separated for rotation
 
 # Optional
-PORT=3001
+PORT=3000
 DATA_DIR=./data
 PREDEFINED_DIR=./predefined
 SESSION_TTL=24h                            # Format: 30m, 24h, 7d
@@ -513,7 +513,7 @@ aloyal-opencode/
 ### Create Tenant (Admin)
 
 ```bash
-curl -X POST http://localhost:3001/v1/admin/tenants \
+curl -X POST http://localhost:3000/v1/admin/tenants \
   -H "Authorization: Bearer admin_secret" \
   -H "Content-Type: application/json" \
   -d '{
@@ -534,7 +534,7 @@ curl -X POST http://localhost:3001/v1/admin/tenants \
 ### Chat Request (OpenAI-Compatible)
 
 ```bash
-curl -X POST http://localhost:3001/v1/chat/completions \
+curl -X POST http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer ocs_acme_EXAMPLE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -562,7 +562,7 @@ curl -X POST http://localhost:3001/v1/chat/completions \
 ### Streaming Chat Request
 
 ```bash
-curl -X POST http://localhost:3001/v1/chat/completions \
+curl -X POST http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer ocs_acme_EXAMPLE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -583,7 +583,7 @@ curl -X POST http://localhost:3001/v1/chat/completions \
 ### Upload Custom Tool
 
 ```bash
-curl -X PUT http://localhost:3001/v1/tenant/tools/my-db-tool \
+curl -X PUT http://localhost:3000/v1/tenant/tools/my-db-tool \
   -H "Authorization: Bearer ocs_acme_EXAMPLE_TOKEN" \
   -H "Content-Type: text/plain" \
   --data-binary @my-db-tool.ts

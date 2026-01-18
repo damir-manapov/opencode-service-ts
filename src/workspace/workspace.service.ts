@@ -53,47 +53,24 @@ export class WorkspaceService {
    * Generate opencode.json configuration
    */
   private generateOpencodeConfig(config: WorkspaceConfig): OpencodeJsonConfig {
-    const opencodeConfig: OpencodeJsonConfig = {};
+    const opencodeConfig: OpencodeJsonConfig = {
+      $schema: "https://opencode.ai/config.json",
+    };
 
-    // Add providers
+    // Add providers (API keys come from environment variables)
     if (Object.keys(config.providers).length > 0) {
       opencodeConfig.provider = {};
-      for (const [providerId, providerConfig] of Object.entries(config.providers)) {
-        opencodeConfig.provider[providerId] = {
-          apiKey: providerConfig.apiKey,
-        };
+      for (const providerId of Object.keys(config.providers)) {
+        opencodeConfig.provider[providerId] = {};
       }
     }
 
-    // Set default model
+    // Set default model as simple string
     const model = config.requestModel ?? config.defaultModel;
     if (model) {
-      opencodeConfig.model = {
-        default: `${model.providerId}/${model.modelId}`,
-      };
+      opencodeConfig.model = `${model.providerId}/${model.modelId}`;
     }
 
     return opencodeConfig;
-  }
-
-  /**
-   * Build environment variables for OpenCode execution
-   */
-  buildEnvironment(secrets: Record<string, string>): Record<string, string> {
-    const env: Record<string, string> = {};
-
-    // Copy relevant environment variables
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined) {
-        env[key] = value;
-      }
-    }
-
-    // Inject tenant secrets (override any existing)
-    for (const [key, value] of Object.entries(secrets)) {
-      env[key] = value;
-    }
-
-    return env;
   }
 }

@@ -27,13 +27,13 @@ export interface GeneratedWorkspace {
 }
 
 export interface OpencodeJsonConfig {
+  $schema?: string;
   provider?: {
     [providerId: string]: {
-      apiKey?: string;
-      baseUrl?: string;
+      // Note: API keys come from environment variables, not config
+      disabled?: boolean;
     };
   };
-  model?: {
-    default?: string;
-  };
+  // Model as simple string in format "provider/model"
+  model?: string;
 }

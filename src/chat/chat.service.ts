@@ -17,6 +17,13 @@ import type {
   ModelSelection,
 } from "./chat.types.js";
 
+interface RequestContext {
+  tenant: TenantConfig;
+  modelSelection: ModelSelection;
+  workspaceConfig: WorkspaceConfig;
+  providerCredentials: Record<string, string>;
+}
+
 @Injectable()
 export class ChatService {
   constructor(
@@ -26,26 +33,18 @@ export class ChatService {
   ) {}
 
   /**
-   * Process a chat completion request (non-streaming)
-   * OpenAI-compatible endpoint
+   * Build common request context (tenant, model, workspace config, credentials)
    */
-  async chatCompletions(
-    tenantId: string,
-    request: ChatCompletionRequest,
-  ): Promise<ChatCompletionResponse> {
+  private async buildContext(tenantId: string, request: ChatCompletionRequest): Promise<RequestContext> {
     const tenant = await this.tenantService.getTenant(tenantId);
     if (!tenant) {
       throw new TenantNotFoundError(tenantId);
     }
 
-    // Parse model string to internal format
     const modelSelection = this.parseModel(request.model, tenant);
+    const tools = await this.collectTools(tenantId);
+    const agents = await this.collectAgents(tenantId);
 
-    // Collect tools and agents (currently empty, will be expanded later)
-    const tools = await this.collectTools(tenantId, tenant);
-    const agents = await this.collectAgents(tenantId, tenant);
-
-    // Build workspace config
     const workspaceConfig: WorkspaceConfig = {
       tenantId,
       sessionId: undefined,
@@ -57,22 +56,32 @@ export class ChatService {
       secrets: tenant.secrets ?? {},
     };
 
-    // Generate workspace
-    const workspace = await this.workspaceService.generateWorkspace(workspaceConfig);
+    const providerCredentials: Record<string, string> = {};
+    for (const [providerId, config] of Object.entries(tenant.providers)) {
+      providerCredentials[providerId] = config.apiKey;
+    }
+
+    return { tenant, modelSelection, workspaceConfig, providerCredentials };
+  }
+
+  /**
+   * Process a chat completion request (non-streaming)
+   */
+  async chatCompletions(
+    tenantId: string,
+    request: ChatCompletionRequest,
+  ): Promise<ChatCompletionResponse> {
+    const ctx = await this.buildContext(tenantId, request);
+    const workspace = await this.workspaceService.generateWorkspace(ctx.workspaceConfig);
 
     try {
-      // Build environment
-      const environment = this.workspaceService.buildEnvironment(tenant.secrets ?? {});
-
-      // Execute OpenCode
       const result = await this.executorService.execute({
         workspace,
         messages: request.messages,
-        environment,
-        model: modelSelection,
+        model: ctx.modelSelection,
+        providerCredentials: ctx.providerCredentials,
       });
 
-      // Build OpenAI-compatible response
       const completionId = `chatcmpl-${randomUUID()}`;
       const hasToolCalls = result.toolCalls.length > 0;
 
@@ -88,7 +97,7 @@ export class ChatService {
               role: "assistant",
               content: hasToolCalls ? null : result.content,
               tool_calls: hasToolCalls
-                ? result.toolCalls.map((tc, _idx) => ({
+                ? result.toolCalls.map((tc) => ({
                     id: `call_${randomUUID().slice(0, 8)}`,
                     type: "function" as const,
                     function: {
@@ -102,79 +111,42 @@ export class ChatService {
           },
         ],
         usage: {
-          prompt_tokens: 0, // TODO: Calculate actual tokens
+          prompt_tokens: 0,
           completion_tokens: 0,
           total_tokens: 0,
         },
       };
     } finally {
-      // Cleanup workspace (if stateless)
       await workspace.cleanup();
     }
   }
 
   /**
    * Process a chat completion request with streaming response
-   * OpenAI-compatible endpoint
    */
   async *chatCompletionsStreaming(
     tenantId: string,
     request: ChatCompletionRequest,
   ): AsyncGenerator<ChatCompletionChunk, void, undefined> {
-    const tenant = await this.tenantService.getTenant(tenantId);
-    if (!tenant) {
-      throw new TenantNotFoundError(tenantId);
-    }
-
-    // Parse model string to internal format
-    const modelSelection = this.parseModel(request.model, tenant);
-
-    // Collect tools and agents (currently empty, will be expanded later)
-    const tools = await this.collectTools(tenantId, tenant);
-    const agents = await this.collectAgents(tenantId, tenant);
-
-    // Build workspace config
-    const workspaceConfig: WorkspaceConfig = {
-      tenantId,
-      sessionId: undefined,
-      providers: tenant.providers,
-      defaultModel: tenant.defaultModel,
-      requestModel: modelSelection,
-      tools,
-      agents,
-      secrets: tenant.secrets ?? {},
-    };
-
-    // Generate workspace
-    const workspace = await this.workspaceService.generateWorkspace(workspaceConfig);
+    const ctx = await this.buildContext(tenantId, request);
+    const workspace = await this.workspaceService.generateWorkspace(ctx.workspaceConfig);
     const completionId = `chatcmpl-${randomUUID()}`;
     const created = Math.floor(Date.now() / 1000);
 
     try {
-      // Build environment
-      const environment = this.workspaceService.buildEnvironment(tenant.secrets ?? {});
-
-      // Send initial role chunk
       yield {
         id: completionId,
         object: "chat.completion.chunk",
         created,
         model: request.model,
-        choices: [
-          {
-            index: 0,
-            delta: { role: "assistant" },
-            finish_reason: null,
-          },
-        ],
+        choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
       };
 
-      // Execute OpenCode with streaming
       for await (const chunk of this.executorService.executeStreaming({
         workspace,
         messages: request.messages,
-        environment,
-        model: modelSelection,
+        model: ctx.modelSelection,
+        providerCredentials: ctx.providerCredentials,
       })) {
         if (chunk.type === "text" && chunk.content) {
           yield {
@@ -182,13 +154,7 @@ export class ChatService {
             object: "chat.completion.chunk",
             created,
             model: request.model,
-            choices: [
-              {
-                index: 0,
-                delta: { content: chunk.content },
-                finish_reason: null,
-              },
-            ],
+            choices: [{ index: 0, delta: { content: chunk.content }, finish_reason: null }],
           };
         } else if (chunk.type === "done") {
           yield {
@@ -196,85 +162,52 @@ export class ChatService {
             object: "chat.completion.chunk",
             created,
             model: request.model,
-            choices: [
-              {
-                index: 0,
-                delta: {},
-                finish_reason: "stop",
-              },
-            ],
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
           };
         }
       }
     } finally {
-      // Cleanup workspace (if stateless)
       await workspace.cleanup();
     }
   }
 
   /**
    * Parse model string to internal ModelSelection format
-   * Supports formats: "provider/model" or just "model" (uses default provider)
    */
   private parseModel(model: string, tenant: TenantConfig): ModelSelection {
     if (model.includes("/")) {
-      const [providerId, modelId] = model.split("/", 2);
-      return { providerId: providerId ?? "", modelId: modelId ?? "" };
-    }
-
-    // Use tenant's default provider
-    if (tenant.defaultModel) {
+      const slashIndex = model.indexOf("/");
       return {
-        providerId: tenant.defaultModel.providerId,
-        modelId: model,
+        providerId: model.substring(0, slashIndex),
+        modelId: model.substring(slashIndex + 1),
       };
     }
 
-    // Fallback: use first configured provider
-    const firstProvider = Object.keys(tenant.providers)[0];
-    return {
-      providerId: firstProvider ?? "",
-      modelId: model,
-    };
-  }
-
-  /**
-   * Collect all tools for the request
-   */
-  private async collectTools(tenantId: string, _tenant: TenantConfig): Promise<ToolDefinition[]> {
-    const tools: ToolDefinition[] = [];
-
-    // Get all tenant tools
-    const toolNames = await this.tenantService.listTools(tenantId);
-
-    // Load tool sources
-    for (const name of toolNames) {
-      const source = await this.tenantService.getTool(tenantId, name);
-      if (source) {
-        tools.push({ name, source });
-      }
+    if (tenant.defaultModel) {
+      return { providerId: tenant.defaultModel.providerId, modelId: model };
     }
 
+    const firstProvider = Object.keys(tenant.providers)[0];
+    return { providerId: firstProvider ?? "", modelId: model };
+  }
+
+  private async collectTools(tenantId: string): Promise<ToolDefinition[]> {
+    const toolNames = await this.tenantService.listTools(tenantId);
+    const tools: ToolDefinition[] = [];
+    for (const name of toolNames) {
+      const source = await this.tenantService.getTool(tenantId, name);
+      if (source) tools.push({ name, source });
+    }
     return tools;
   }
 
-  /**
-   * Collect all agents for the request
-   */
-  private async collectAgents(tenantId: string, _tenant: TenantConfig): Promise<AgentDefinition[]> {
-    const agents: AgentDefinition[] = [];
-
-    // Get all tenant agents
+  private async collectAgents(tenantId: string): Promise<AgentDefinition[]> {
     const agentNames = await this.tenantService.listAgents(tenantId);
-
-    // Load agent content
+    const agents: AgentDefinition[] = [];
     for (const name of agentNames) {
       const content = await this.tenantService.getAgent(tenantId, name);
-      if (content) {
-        agents.push({ name, content });
-      }
+      if (content) agents.push({ name, content });
     }
-
     return agents;
   }
 }

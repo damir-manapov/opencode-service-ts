@@ -106,9 +106,10 @@ describe("WorkspaceService", () => {
       const configContent = await fs.readFile(configPath, "utf-8");
       const parsedConfig = JSON.parse(configContent);
 
+      // Provider entries exist but don't contain apiKey (credentials set via auth API)
       expect(parsedConfig.provider).toEqual({
-        anthropic: { apiKey: "sk-ant-xxx" },
-        openai: { apiKey: "sk-xxx" },
+        anthropic: {},
+        openai: {},
       });
     });
 
@@ -129,9 +130,8 @@ describe("WorkspaceService", () => {
       const configContent = await fs.readFile(configPath, "utf-8");
       const parsedConfig = JSON.parse(configContent);
 
-      expect(parsedConfig.model).toEqual({
-        default: "anthropic/claude-sonnet",
-      });
+      // Model is a simple string, not an object
+      expect(parsedConfig.model).toBe("anthropic/claude-sonnet");
     });
 
     it("should prefer request model over default model", async () => {
@@ -152,9 +152,8 @@ describe("WorkspaceService", () => {
       const configContent = await fs.readFile(configPath, "utf-8");
       const parsedConfig = JSON.parse(configContent);
 
-      expect(parsedConfig.model).toEqual({
-        default: "openai/gpt-4",
-      });
+      // Model is a simple string, not an object
+      expect(parsedConfig.model).toBe("openai/gpt-4");
     });
 
     it("should use sessionId for workspace path if provided", async () => {
@@ -225,41 +224,6 @@ describe("WorkspaceService", () => {
         .then(() => true)
         .catch(() => false);
       expect(exists).toBe(true);
-    });
-  });
-
-  describe("buildEnvironment", () => {
-    it("should include process environment variables", () => {
-      const result = service.buildEnvironment({});
-
-      expect(result.PATH).toBeDefined();
-    });
-
-    it("should inject tenant secrets", () => {
-      const secrets = {
-        DB_URL: "postgres://localhost:5432/db",
-        API_KEY: "secret-key",
-      };
-
-      const result = service.buildEnvironment(secrets);
-
-      expect(result.DB_URL).toBe("postgres://localhost:5432/db");
-      expect(result.API_KEY).toBe("secret-key");
-    });
-
-    it("should override env vars with secrets", () => {
-      const originalPath = process.env.PATH;
-
-      const secrets = {
-        PATH: "/custom/path",
-      };
-
-      const result = service.buildEnvironment(secrets);
-
-      expect(result.PATH).toBe("/custom/path");
-
-      // Verify original is unchanged
-      expect(process.env.PATH).toBe(originalPath);
     });
   });
 });

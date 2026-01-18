@@ -87,7 +87,7 @@ pnpm typecheck
 ADMIN_TOKENS=admin_token1,admin_token2    # Comma-separated for rotation
 
 # Optional
-PORT=3001
+PORT=3000
 DATA_DIR=./data
 PREDEFINED_DIR=./predefined
 SESSION_TTL=24h                            # Format: 30m, 24h, 7d
@@ -103,7 +103,7 @@ See [docs/design.md](docs/design.md) for full API documentation.
 1. Create a tenant (admin):
 
 ```bash
-curl -X POST http://localhost:3001/v1/admin/tenants \
+curl -X POST http://localhost:3000/v1/admin/tenants \
   -H "Authorization: Bearer admin_token1" \
   -H "Content-Type: application/json" \
   -d '{"name": "My Tenant", "providers": {"anthropic": {"apiKey": "sk-..."}}}'
@@ -112,7 +112,7 @@ curl -X POST http://localhost:3001/v1/admin/tenants \
 2. Use the returned token for chat:
 
 ```bash
-curl -X POST http://localhost:3001/v1/chat \
+curl -X POST http://localhost:3000/v1/chat \
   -H "Authorization: Bearer ocs_mytenant_sk_..." \
   -H "Content-Type: application/json" \
   -d '{"messages": [{"role": "user", "content": "Hello"}]}'

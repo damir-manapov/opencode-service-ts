@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 
 export const CONFIG_DEFAULTS = {
-  PORT: 3001,
+  PORT: 3000,
   DATA_DIR: "./data",
   PREDEFINED_DIR: "./predefined",
   SESSION_TTL: "24h",

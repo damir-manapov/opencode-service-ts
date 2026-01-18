@@ -45,6 +45,34 @@ export class ChatController {
     }
 
     // Non-streaming response
-    return this.chatService.chatCompletions(tenantId, body);
+    try {
+      return await this.chatService.chatCompletions(tenantId, body);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      // Return OpenAI-compatible error response
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        error: {
+          message: errorMessage,
+          type: "server_error",
+          code: this.extractErrorCode(error),
+        },
+      });
+      return;
+    }
+  }
+
+  /**
+   * Extract error code from error object if available
+   */
+  private extractErrorCode(error: unknown): string | undefined {
+    if (error instanceof Error) {
+      // Check if error message contains a code (e.g., "insufficient_quota")
+      const codeMatch = error.message.match(/"code"\s*:\s*"([^"]+)"/)
+        || error.message.match(/"type"\s*:\s*"([^"]+)"/);
+      if (codeMatch) {
+        return codeMatch[1];
+      }
+    }
+    return undefined;
   }
 }
