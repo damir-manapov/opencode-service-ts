@@ -14,8 +14,9 @@ export class ModelsService {
 
     const models: Model[] = [];
     const now = Math.floor(Date.now() / 1000);
+    const providers = tenant.providers || {};
 
-    for (const providerId of Object.keys(tenant.providers)) {
+    for (const providerId of Object.keys(providers)) {
       const providerModels = PROVIDER_MODELS[providerId] || [];
 
       for (const modelId of providerModels) {
