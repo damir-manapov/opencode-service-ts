@@ -589,7 +589,7 @@ describe("Chat Completions with Custom Tool", () => {
   let tenantId: string;
 
   const TOOL_NAME = "get-magic-number";
-  const MAGIC_NUMBER = "42";
+  const MAGIC_NUMBER = "4242";
   const TOOL_SOURCE = `
 import { tool } from "@opencode-ai/plugin";
 
@@ -657,22 +657,12 @@ export default tool({
     const body = response.body as {
       choices: Array<{
         message: { content: string | null };
-        finish_reason: string;
       }>;
     };
 
     const content = body.choices[0]?.message.content ?? "";
-    const finishReason = body.choices[0]?.finish_reason;
 
-    // The response should either:
-    // 1. Contain tool_calls (finish_reason: "tool_calls") - meaning it called the tool
-    // 2. Contain the magic number in content (if OpenCode ran the tool and returned result)
-    if (finishReason === "tool_calls") {
-      // Tool was called - this is also a valid outcome
-      expect(finishReason).toBe("tool_calls");
-    } else {
-      // Tool result was incorporated into response
-      expect(content).toContain(MAGIC_NUMBER);
-    }
+    // OpenCode runs tools and returns results - content should have the magic number
+    expect(content).toContain(MAGIC_NUMBER);
   });
 });

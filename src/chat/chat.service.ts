@@ -94,7 +94,7 @@ export class ChatService {
           index: 0,
           message: {
             role: "assistant",
-            content: hasToolCalls ? null : result.content,
+            content: result.content,
             tool_calls: hasToolCalls
               ? result.toolCalls.map((tc) => ({
                   id: `call_${randomUUID().slice(0, 8)}`,
