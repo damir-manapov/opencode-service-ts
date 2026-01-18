@@ -9,7 +9,15 @@ import { ModelsModule } from "./models/index.js";
 import { TenantModule } from "./tenant/index.js";
 
 @Module({
-  imports: [ConfigModule, DataModule, AuthModule, TenantModule, AdminModule, ChatModule, ModelsModule],
+  imports: [
+    ConfigModule,
+    DataModule,
+    AuthModule,
+    TenantModule,
+    AdminModule,
+    ChatModule,
+    ModelsModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule {}

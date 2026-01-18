@@ -41,14 +41,14 @@ export class ChatService {
     // Parse model string to internal format
     const modelSelection = this.parseModel(request.model, tenant);
 
-    // Collect tools and agents
-    const tools = await this.collectTools(tenantId, tenant, request["x-tools"]);
-    const agents = await this.collectAgents(tenantId, tenant, request["x-agents"]);
+    // Collect tools and agents (currently empty, will be expanded later)
+    const tools = await this.collectTools(tenantId, tenant);
+    const agents = await this.collectAgents(tenantId, tenant);
 
     // Build workspace config
     const workspaceConfig: WorkspaceConfig = {
       tenantId,
-      sessionId: request["x-session-id"],
+      sessionId: undefined,
       providers: tenant.providers,
       defaultModel: tenant.defaultModel,
       requestModel: modelSelection,
@@ -129,14 +129,14 @@ export class ChatService {
     // Parse model string to internal format
     const modelSelection = this.parseModel(request.model, tenant);
 
-    // Collect tools and agents
-    const tools = await this.collectTools(tenantId, tenant, request["x-tools"]);
-    const agents = await this.collectAgents(tenantId, tenant, request["x-agents"]);
+    // Collect tools and agents (currently empty, will be expanded later)
+    const tools = await this.collectTools(tenantId, tenant);
+    const agents = await this.collectAgents(tenantId, tenant);
 
     // Build workspace config
     const workspaceConfig: WorkspaceConfig = {
       tenantId,
-      sessionId: request["x-session-id"],
+      sessionId: undefined,
       providers: tenant.providers,
       defaultModel: tenant.defaultModel,
       requestModel: modelSelection,
@@ -219,12 +219,21 @@ export class ChatService {
   private parseModel(model: string, tenant: TenantConfig): ModelSelection {
     if (model.includes("/")) {
       const [providerId, modelId] = model.split("/", 2);
-      return { providerId, modelId };
+      return { providerId: providerId ?? "", modelId: modelId ?? "" };
     }
 
     // Use tenant's default provider
+    if (tenant.defaultModel) {
+      return {
+        providerId: tenant.defaultModel.providerId,
+        modelId: model,
+      };
+    }
+
+    // Fallback: use first configured provider
+    const firstProvider = Object.keys(tenant.providers)[0];
     return {
-      providerId: tenant.defaultModel.providerId,
+      providerId: firstProvider ?? "",
       modelId: model,
     };
   }
@@ -232,20 +241,11 @@ export class ChatService {
   /**
    * Collect all tools for the request
    */
-  private async collectTools(
-    tenantId: string,
-    _tenant: TenantConfig,
-    requestedTools?: string[],
-  ): Promise<ToolDefinition[]> {
+  private async collectTools(tenantId: string, _tenant: TenantConfig): Promise<ToolDefinition[]> {
     const tools: ToolDefinition[] = [];
 
     // Get all tenant tools
-    const tenantToolNames = await this.tenantService.listTools(tenantId);
-
-    // Filter by requested tools if specified
-    const toolNames = requestedTools
-      ? tenantToolNames.filter((t) => requestedTools.includes(t))
-      : tenantToolNames;
+    const toolNames = await this.tenantService.listTools(tenantId);
 
     // Load tool sources
     for (const name of toolNames) {
@@ -261,20 +261,11 @@ export class ChatService {
   /**
    * Collect all agents for the request
    */
-  private async collectAgents(
-    tenantId: string,
-    _tenant: TenantConfig,
-    requestedAgents?: string[],
-  ): Promise<AgentDefinition[]> {
+  private async collectAgents(tenantId: string, _tenant: TenantConfig): Promise<AgentDefinition[]> {
     const agents: AgentDefinition[] = [];
 
     // Get all tenant agents
-    const tenantAgentNames = await this.tenantService.listAgents(tenantId);
-
-    // Filter by requested agents if specified
-    const agentNames = requestedAgents
-      ? tenantAgentNames.filter((a) => requestedAgents.includes(a))
-      : tenantAgentNames;
+    const agentNames = await this.tenantService.listAgents(tenantId);
 
     // Load agent content
     for (const name of agentNames) {

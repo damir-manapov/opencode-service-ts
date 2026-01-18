@@ -36,12 +36,12 @@ describe("ModelsService", () => {
       // Should have anthropic models
       const anthropicModels = result.data.filter((m) => m.owned_by === "anthropic");
       expect(anthropicModels.length).toBeGreaterThan(0);
-      expect(anthropicModels[0].id).toMatch(/^anthropic\//);
+      expect(anthropicModels[0]?.id).toMatch(/^anthropic\//);
 
       // Should have openai models
       const openaiModels = result.data.filter((m) => m.owned_by === "openai");
       expect(openaiModels.length).toBeGreaterThan(0);
-      expect(openaiModels[0].id).toMatch(/^openai\//);
+      expect(openaiModels[0]?.id).toMatch(/^openai\//);
     });
 
     it("should return empty list for unknown provider", async () => {

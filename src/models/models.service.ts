@@ -8,6 +8,10 @@ export class ModelsService {
 
   async listModels(tenantId: string): Promise<ModelsListResponse> {
     const tenant = await this.tenantService.getTenant(tenantId);
+    if (!tenant) {
+      return { object: "list", data: [] };
+    }
+
     const models: Model[] = [];
     const now = Math.floor(Date.now() / 1000);
 

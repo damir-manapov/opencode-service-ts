@@ -71,7 +71,7 @@ Client Request
 ocs_{tenantId}_{secret}
 ```
 
-Example: `ocs_acme_sk_a1b2c3d4e5f6g7h8`
+Example: `ocs_acme_EXAMPLE_TOKEN5f6g7h8`
 
 - Prefix `ocs_` identifies OpenCode Service tokens
 - TenantId embedded in token (not in URL path)
@@ -528,14 +528,14 @@ curl -X POST http://localhost:3001/v1/admin/tenants \
     }
   }'
 
-# Response: { "token": "ocs_acme_sk_a1b2c3..." }
+# Response: { "token": "ocs_acme_EXAMPLE_TOKEN" }
 ```
 
 ### Chat Request (OpenAI-Compatible)
 
 ```bash
 curl -X POST http://localhost:3001/v1/chat/completions \
-  -H "Authorization: Bearer ocs_acme_sk_a1b2c3..." \
+  -H "Authorization: Bearer ocs_acme_EXAMPLE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "anthropic/claude-sonnet",
@@ -563,7 +563,7 @@ curl -X POST http://localhost:3001/v1/chat/completions \
 
 ```bash
 curl -X POST http://localhost:3001/v1/chat/completions \
-  -H "Authorization: Bearer ocs_acme_sk_a1b2c3..." \
+  -H "Authorization: Bearer ocs_acme_EXAMPLE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "anthropic/claude-sonnet",
@@ -584,7 +584,7 @@ curl -X POST http://localhost:3001/v1/chat/completions \
 
 ```bash
 curl -X PUT http://localhost:3001/v1/tenant/tools/my-db-tool \
-  -H "Authorization: Bearer ocs_acme_sk_a1b2c3..." \
+  -H "Authorization: Bearer ocs_acme_EXAMPLE_TOKEN" \
   -H "Content-Type: text/plain" \
   --data-binary @my-db-tool.ts
 ```
