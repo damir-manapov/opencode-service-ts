@@ -189,26 +189,90 @@ interface SessionMeta {
 
 ## API Endpoints
 
-### Chat (Main Endpoint)
+### Chat Completions (OpenAI-Compatible)
 
 ```
-POST /v1/chat
+POST /v1/chat/completions
 Authorization: Bearer ocs_{tenantId}_{secret}
 Content-Type: application/json
 
 {
-  "sessionId": "optional-session-id",
-  "model": {                           // Optional, overrides default
-    "providerId": "anthropic",
-    "modelId": "claude-sonnet"
-  },
-  "tools": ["my-custom-tool"],         // Additional tools to enable
-  "agents": ["my-agent"],              // Additional agents to enable
+  "model": "anthropic/claude-sonnet",  // Required: "provider/model" format
   "messages": [
+    { "role": "system", "content": "You are a helpful assistant" },
     { "role": "user", "content": "Query the database" }
   ],
-  "stream": true
+  "stream": false,                     // Optional: enable SSE streaming
+  "temperature": 0.7,                  // Optional: sampling temperature
+  "max_tokens": 4096,                  // Optional: max output tokens
+  "tools": [                           // Optional: OpenAI function definitions
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": { "type": "object", "properties": {...} }
+      }
+    }
+  ],
+  "tool_choice": "auto",               // Optional: "none", "auto", "required"
+  
+  // Custom extensions (non-OpenAI):
+  "x-session-id": "optional-session",  // Persist conversation state
+  "x-agents": ["my-agent"],            // Enable custom agents
+  "x-tools": ["my-custom-tool"]        // Enable custom tools by name
 }
+```
+
+#### Response (Non-Streaming)
+
+```json
+{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1737475200,
+  "model": "anthropic/claude-sonnet",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Here are the database results...",
+        "tool_calls": null
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 50,
+    "completion_tokens": 150,
+    "total_tokens": 200
+  }
+}
+```
+
+#### Response (Streaming)
+
+Server-Sent Events (SSE) format:
+
+```
+data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1737475200,"model":"anthropic/claude-sonnet","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1737475200,"model":"anthropic/claude-sonnet","choices":[{"index":0,"delta":{"content":"Here"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1737475200,"model":"anthropic/claude-sonnet","choices":[{"index":0,"delta":{"content":" are"},"finish_reason":null}]}
+
+data: [DONE]
+```
+
+#### Model Format
+
+Models are specified as `provider/model`:
+- `anthropic/claude-sonnet-4-20250514`
+- `openai/gpt-4o`
+- `google/gemini-pro`
+
+The provider must be configured in tenant's provider settings.
 ```
 
 ### Session Management
@@ -442,18 +506,53 @@ curl -X POST http://localhost:3001/v1/admin/tenants \
 # Response: { "token": "ocs_acme_sk_a1b2c3..." }
 ```
 
-### Chat Request
+### Chat Request (OpenAI-Compatible)
 
 ```bash
-curl -X POST http://localhost:3001/v1/chat \
+curl -X POST http://localhost:3001/v1/chat/completions \
   -H "Authorization: Bearer ocs_acme_sk_a1b2c3..." \
   -H "Content-Type: application/json" \
   -d '{
+    "model": "anthropic/claude-sonnet",
     "messages": [
       { "role": "user", "content": "Hello, what tools do you have?" }
     ],
+    "stream": false
+  }'
+
+# Response:
+# {
+#   "id": "chatcmpl-abc123",
+#   "object": "chat.completion",
+#   "created": 1737475200,
+#   "model": "anthropic/claude-sonnet",
+#   "choices": [{
+#     "index": 0,
+#     "message": { "role": "assistant", "content": "I have access to..." },
+#     "finish_reason": "stop"
+#   }]
+# }
+```
+
+### Streaming Chat Request
+
+```bash
+curl -X POST http://localhost:3001/v1/chat/completions \
+  -H "Authorization: Bearer ocs_acme_sk_a1b2c3..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic/claude-sonnet",
+    "messages": [
+      { "role": "user", "content": "Write a haiku" }
+    ],
     "stream": true
   }'
+
+# Response (SSE):
+# data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"delta":{"content":"Silent"}}]}
+# data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"delta":{"content":" code"}}]}
+# ...
+# data: [DONE]
 ```
 
 ### Upload Custom Tool

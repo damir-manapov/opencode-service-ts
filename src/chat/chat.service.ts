@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { TenantNotFoundError } from "../errors/index.js";
 import { OpencodeExecutorService } from "../executor/opencode-executor.service.js";
@@ -9,7 +10,12 @@ import type {
   ToolDefinition,
   WorkspaceConfig,
 } from "../workspace/workspace.types.js";
-import type { ChatRequest, ChatResponse, StreamChunk } from "./chat.types.js";
+import type {
+  ChatCompletionChunk,
+  ChatCompletionRequest,
+  ChatCompletionResponse,
+  ModelSelection,
+} from "./chat.types.js";
 
 @Injectable()
 export class ChatService {
@@ -20,25 +26,32 @@ export class ChatService {
   ) {}
 
   /**
-   * Process a chat request (non-streaming)
+   * Process a chat completion request (non-streaming)
+   * OpenAI-compatible endpoint
    */
-  async chat(tenantId: string, request: ChatRequest): Promise<ChatResponse> {
+  async chatCompletions(
+    tenantId: string,
+    request: ChatCompletionRequest,
+  ): Promise<ChatCompletionResponse> {
     const tenant = await this.tenantService.getTenant(tenantId);
     if (!tenant) {
       throw new TenantNotFoundError(tenantId);
     }
 
+    // Parse model string to internal format
+    const modelSelection = this.parseModel(request.model, tenant);
+
     // Collect tools and agents
-    const tools = await this.collectTools(tenantId, tenant, request.tools);
-    const agents = await this.collectAgents(tenantId, tenant, request.agents);
+    const tools = await this.collectTools(tenantId, tenant, request["x-tools"]);
+    const agents = await this.collectAgents(tenantId, tenant, request["x-agents"]);
 
     // Build workspace config
     const workspaceConfig: WorkspaceConfig = {
       tenantId,
-      sessionId: request.sessionId,
+      sessionId: request["x-session-id"],
       providers: tenant.providers,
       defaultModel: tenant.defaultModel,
-      requestModel: request.model,
+      requestModel: modelSelection,
       tools,
       agents,
       secrets: tenant.secrets ?? {},
@@ -56,16 +69,43 @@ export class ChatService {
         workspace,
         messages: request.messages,
         environment,
-        model: request.model ?? tenant.defaultModel,
+        model: modelSelection,
       });
 
+      // Build OpenAI-compatible response
+      const completionId = `chatcmpl-${randomUUID()}`;
+      const hasToolCalls = result.toolCalls.length > 0;
+
       return {
-        sessionId: request.sessionId,
-        message: {
-          role: "assistant",
-          content: result.content,
+        id: completionId,
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
+        model: request.model,
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: hasToolCalls ? null : result.content,
+              tool_calls: hasToolCalls
+                ? result.toolCalls.map((tc, _idx) => ({
+                    id: `call_${randomUUID().slice(0, 8)}`,
+                    type: "function" as const,
+                    function: {
+                      name: tc.name,
+                      arguments: JSON.stringify(tc.input),
+                    },
+                  }))
+                : undefined,
+            },
+            finish_reason: hasToolCalls ? "tool_calls" : "stop",
+          },
+        ],
+        usage: {
+          prompt_tokens: 0, // TODO: Calculate actual tokens
+          completion_tokens: 0,
+          total_tokens: 0,
         },
-        toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
       };
     } finally {
       // Cleanup workspace (if stateless)
@@ -74,28 +114,32 @@ export class ChatService {
   }
 
   /**
-   * Process a chat request with streaming response
+   * Process a chat completion request with streaming response
+   * OpenAI-compatible endpoint
    */
-  async *chatStreaming(
+  async *chatCompletionsStreaming(
     tenantId: string,
-    request: ChatRequest,
-  ): AsyncGenerator<StreamChunk, void, undefined> {
+    request: ChatCompletionRequest,
+  ): AsyncGenerator<ChatCompletionChunk, void, undefined> {
     const tenant = await this.tenantService.getTenant(tenantId);
     if (!tenant) {
       throw new TenantNotFoundError(tenantId);
     }
 
+    // Parse model string to internal format
+    const modelSelection = this.parseModel(request.model, tenant);
+
     // Collect tools and agents
-    const tools = await this.collectTools(tenantId, tenant, request.tools);
-    const agents = await this.collectAgents(tenantId, tenant, request.agents);
+    const tools = await this.collectTools(tenantId, tenant, request["x-tools"]);
+    const agents = await this.collectAgents(tenantId, tenant, request["x-agents"]);
 
     // Build workspace config
     const workspaceConfig: WorkspaceConfig = {
       tenantId,
-      sessionId: request.sessionId,
+      sessionId: request["x-session-id"],
       providers: tenant.providers,
       defaultModel: tenant.defaultModel,
-      requestModel: request.model,
+      requestModel: modelSelection,
       tools,
       agents,
       secrets: tenant.secrets ?? {},
@@ -103,24 +147,86 @@ export class ChatService {
 
     // Generate workspace
     const workspace = await this.workspaceService.generateWorkspace(workspaceConfig);
+    const completionId = `chatcmpl-${randomUUID()}`;
+    const created = Math.floor(Date.now() / 1000);
 
     try {
       // Build environment
       const environment = this.workspaceService.buildEnvironment(tenant.secrets ?? {});
+
+      // Send initial role chunk
+      yield {
+        id: completionId,
+        object: "chat.completion.chunk",
+        created,
+        model: request.model,
+        choices: [
+          {
+            index: 0,
+            delta: { role: "assistant" },
+            finish_reason: null,
+          },
+        ],
+      };
 
       // Execute OpenCode with streaming
       for await (const chunk of this.executorService.executeStreaming({
         workspace,
         messages: request.messages,
         environment,
-        model: request.model ?? tenant.defaultModel,
+        model: modelSelection,
       })) {
-        yield chunk;
+        if (chunk.type === "text" && chunk.content) {
+          yield {
+            id: completionId,
+            object: "chat.completion.chunk",
+            created,
+            model: request.model,
+            choices: [
+              {
+                index: 0,
+                delta: { content: chunk.content },
+                finish_reason: null,
+              },
+            ],
+          };
+        } else if (chunk.type === "done") {
+          yield {
+            id: completionId,
+            object: "chat.completion.chunk",
+            created,
+            model: request.model,
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: "stop",
+              },
+            ],
+          };
+        }
       }
     } finally {
       // Cleanup workspace (if stateless)
       await workspace.cleanup();
     }
+  }
+
+  /**
+   * Parse model string to internal ModelSelection format
+   * Supports formats: "provider/model" or just "model" (uses default provider)
+   */
+  private parseModel(model: string, tenant: TenantConfig): ModelSelection {
+    if (model.includes("/")) {
+      const [providerId, modelId] = model.split("/", 2);
+      return { providerId, modelId };
+    }
+
+    // Use tenant's default provider
+    return {
+      providerId: tenant.defaultModel.providerId,
+      modelId: model,
+    };
   }
 
   /**
@@ -148,9 +254,6 @@ export class ChatService {
         tools.push({ name, source });
       }
     }
-
-    // TODO: Add predefined tools if configured
-    // const predefinedTools = tenant.includePredefined?.tools ?? [];
 
     return tools;
   }
@@ -180,9 +283,6 @@ export class ChatService {
         agents.push({ name, content });
       }
     }
-
-    // TODO: Add predefined agents if configured
-    // const predefinedAgents = tenant.includePredefined?.agents ?? [];
 
     return agents;
   }

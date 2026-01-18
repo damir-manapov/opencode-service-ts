@@ -1,6 +1,11 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { createOpencode, createOpencodeClient } from "@opencode-ai/sdk";
-import type { ChatMessage, StreamChunk } from "../chat/chat.types.js";
+import type {
+  ChatMessage,
+  ExecutorResult,
+  ModelSelection,
+  StreamChunk,
+} from "../chat/chat.types.js";
 import type { GeneratedWorkspace } from "../workspace/workspace.types.js";
 
 type OpencodeClient = Awaited<ReturnType<typeof createOpencodeClient>>;
@@ -10,17 +15,12 @@ export interface ExecuteOptions {
   workspace: GeneratedWorkspace;
   messages: ChatMessage[];
   environment: Record<string, string>;
-  model?: { providerId: string; modelId: string };
+  model?: ModelSelection;
 }
 
-export interface ExecuteResult {
-  content: string;
-  toolCalls: Array<{
-    name: string;
-    input: unknown;
-    output: unknown;
-  }>;
-}
+// Re-export ExecutorResult from chat.types for external use
+// Re-export ExecutorResult from chat.types for external use
+export type { ExecutorResult } from "../chat/chat.types.js";
 
 /**
  * Check if OpenCode server is running at the given URL
@@ -55,7 +55,7 @@ export class OpencodeExecutorService implements OnModuleDestroy {
    * Execute OpenCode with the given workspace and messages
    * Returns the full response (non-streaming)
    */
-  async execute(options: ExecuteOptions): Promise<ExecuteResult> {
+  async execute(options: ExecuteOptions): Promise<ExecutorResult> {
     const { workspace, messages, environment, model } = options;
 
     // Inject environment variables for provider credentials
@@ -103,7 +103,7 @@ export class OpencodeExecutorService implements OnModuleDestroy {
 
       // Collect all text parts and tool calls from response
       const textParts: string[] = [];
-      const toolCalls: ExecuteResult["toolCalls"] = [];
+      const toolCalls: ExecutorResult["toolCalls"] = [];
 
       for (const part of response.data.parts) {
         if (part.type === "text") {

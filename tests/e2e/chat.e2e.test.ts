@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getTestConfig, httpRequest, type TestConfig } from "./setup.js";
 
-describe("Chat API", () => {
+describe("Chat Completions API (OpenAI-compatible)", () => {
   let config: TestConfig;
   let tenantToken: string;
 
@@ -74,10 +74,11 @@ describe("Chat API", () => {
     }
   });
 
-  describe("POST /v1/chat", () => {
+  describe("POST /v1/chat/completions", () => {
     it("should reject requests without authentication", async () => {
-      const response = await httpRequest("POST", "/v1/chat", {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         body: {
+          model: "anthropic/claude-sonnet",
           messages: [{ role: "user", content: "Hello" }],
         },
       });
@@ -86,9 +87,10 @@ describe("Chat API", () => {
     });
 
     it("should reject requests with invalid token", async () => {
-      const response = await httpRequest("POST", "/v1/chat", {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         token: "invalid-token",
         body: {
+          model: "anthropic/claude-sonnet",
           messages: [{ role: "user", content: "Hello" }],
         },
       });
@@ -96,12 +98,13 @@ describe("Chat API", () => {
       expect(response.status).toBe(401);
     });
 
-    it("should accept valid chat request structure", async () => {
+    it("should accept valid OpenAI-compatible request", async () => {
       // Note: This test validates request parsing, not actual OpenCode execution
       // OpenCode execution will fail without proper setup, but request validation should pass
-      const response = await httpRequest("POST", "/v1/chat", {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
+          model: "anthropic/claude-sonnet",
           messages: [{ role: "user", content: "Hello" }],
         },
       });
@@ -111,11 +114,11 @@ describe("Chat API", () => {
       expect([200, 500]).toContain(response.status);
     });
 
-    it("should accept chat request with model override", async () => {
-      const response = await httpRequest("POST", "/v1/chat", {
+    it("should accept request with simple model name", async () => {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
-          model: { providerId: "openai", modelId: "gpt-4" },
+          model: "gpt-4",
           messages: [{ role: "user", content: "Hello" }],
         },
       });
@@ -123,11 +126,12 @@ describe("Chat API", () => {
       expect([200, 500]).toContain(response.status);
     });
 
-    it("should accept chat request with sessionId", async () => {
-      const response = await httpRequest("POST", "/v1/chat", {
+    it("should accept request with x-session-id extension", async () => {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
-          sessionId: "test-session-123",
+          model: "claude-sonnet",
+          "x-session-id": "test-session-123",
           messages: [{ role: "user", content: "Hello" }],
         },
       });
@@ -135,11 +139,12 @@ describe("Chat API", () => {
       expect([200, 500]).toContain(response.status);
     });
 
-    it("should accept chat request with tools filter", async () => {
-      const response = await httpRequest("POST", "/v1/chat", {
+    it("should accept request with x-tools extension", async () => {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
-          tools: ["my-tool"],
+          model: "claude-sonnet",
+          "x-tools": ["my-tool"],
           messages: [{ role: "user", content: "Hello" }],
         },
       });
@@ -147,11 +152,12 @@ describe("Chat API", () => {
       expect([200, 500]).toContain(response.status);
     });
 
-    it("should accept chat request with agents filter", async () => {
-      const response = await httpRequest("POST", "/v1/chat", {
+    it("should accept request with x-agents extension", async () => {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
-          agents: ["default"],
+          model: "claude-sonnet",
+          "x-agents": ["default"],
           messages: [{ role: "user", content: "Hello" }],
         },
       });
@@ -160,9 +166,10 @@ describe("Chat API", () => {
     });
 
     it("should accept streaming chat request", async () => {
-      const response = await httpRequest("POST", "/v1/chat", {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
+          model: "claude-sonnet",
           stream: true,
           messages: [{ role: "user", content: "Hello" }],
         },
@@ -173,9 +180,10 @@ describe("Chat API", () => {
     });
 
     it("should accept multiple messages in conversation", async () => {
-      const response = await httpRequest("POST", "/v1/chat", {
+      const response = await httpRequest("POST", "/v1/chat/completions", {
         token: tenantToken,
         body: {
+          model: "claude-sonnet",
           messages: [
             { role: "system", content: "You are a helpful assistant." },
             { role: "user", content: "What is 2+2?" },
