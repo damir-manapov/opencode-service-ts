@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import * as fs from "node:fs/promises";
+import * as net from "node:net";
 import * as path from "node:path";
 import { createOpencode } from "@opencode-ai/sdk";
 import type {
@@ -9,7 +10,8 @@ import type {
   StreamChunk,
 } from "../chat/chat.types.js";
 import { ConfigService } from "../config/config.service.js";
-import type { GeneratedWorkspace } from "../workspace/workspace.types.js";
+import type { WorkspaceConfig } from "../workspace/workspace.types.js";
+import { WorkspaceService } from "../workspace/workspace.service.js";
 
 type OpencodeInstance = Awaited<ReturnType<typeof createOpencode>>;
 type OpencodeClient = OpencodeInstance["client"];
@@ -24,7 +26,7 @@ interface TenantInstance {
 
 export interface ExecuteOptions {
   tenantId: string;
-  workspace: GeneratedWorkspace;
+  workspaceConfig: WorkspaceConfig;
   messages: ChatMessage[];
   model?: ModelSelection;
   /** Provider credentials in format { providerId: apiKey } */
@@ -42,7 +44,10 @@ export class OpencodeExecutorService implements OnModuleDestroy {
   /** Map of tenantId -> running OpenCode instance */
   private readonly instances = new Map<string, TenantInstance>();
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly workspaceService: WorkspaceService,
+  ) {
     this.idleTimeoutMs = this.configService.get("idleTimeout");
     this.logger.log(`Idle timeout: ${this.idleTimeoutMs / 1000}s`);
   }
@@ -52,14 +57,15 @@ export class OpencodeExecutorService implements OnModuleDestroy {
   }
 
   /**
-   * Execute OpenCode with the given workspace and messages
+   * Execute OpenCode with the given workspace config and messages
    * Uses per-tenant instance pooling with idle timeout
+   * Manages workspace creation and lifecycle internally
    */
   async execute(options: ExecuteOptions): Promise<ExecutorResult> {
-    const { tenantId, workspace, messages, model, providerCredentials } = options;
+    const { tenantId, workspaceConfig, messages, model, providerCredentials } = options;
 
-    // Get or create instance for this tenant
-    const tenantInstance = await this.getOrCreateInstance(tenantId, workspace.path);
+    // Get or create instance (creates workspace if needed)
+    const tenantInstance = await this.getOrCreateInstance(tenantId, workspaceConfig);
     const client = tenantInstance.instance.client;
 
     // Update last used and reset idle timer
@@ -68,7 +74,7 @@ export class OpencodeExecutorService implements OnModuleDestroy {
     try {
       // Set provider credentials via OpenCode auth API
       if (providerCredentials) {
-        await this.setProviderCredentials(client, providerCredentials, workspace.path);
+        await this.setProviderCredentials(client, providerCredentials, tenantInstance.workspacePath);
       }
 
       const prompt = this.buildPrompt(messages);
@@ -196,6 +202,14 @@ export class OpencodeExecutorService implements OnModuleDestroy {
       this.logger.log(`Shutting down OpenCode for tenant ${tenantId}`);
       tenantInstance.instance.server.close();
       this.instances.delete(tenantId);
+
+      // Cleanup workspace directory
+      try {
+        await fs.rm(tenantInstance.workspacePath, { recursive: true, force: true });
+        this.logger.debug(`Cleaned up workspace: ${tenantInstance.workspacePath}`);
+      } catch (err) {
+        this.logger.warn(`Failed to cleanup workspace: ${tenantInstance.workspacePath}`, err);
+      }
     }
   }
 
@@ -211,26 +225,34 @@ export class OpencodeExecutorService implements OnModuleDestroy {
 
   /**
    * Get existing instance or create new one for tenant
-   * If reusing, syncs the new workspace content (agents/tools) to the existing workspace
+   * Creates workspace on first request, syncs content on subsequent requests
    */
   private async getOrCreateInstance(
     tenantId: string,
-    newWorkspacePath: string,
+    workspaceConfig: WorkspaceConfig,
   ): Promise<TenantInstance> {
     const existing = this.instances.get(tenantId);
     if (existing) {
-      // Sync new workspace content to existing workspace
-      await this.syncWorkspaceContent(newWorkspacePath, existing.workspacePath);
+      // Generate temp workspace to sync content from
+      const tempWorkspace = await this.workspaceService.generateWorkspace(workspaceConfig);
+      try {
+        await this.syncWorkspaceContent(tempWorkspace.path, existing.workspacePath);
+      } finally {
+        // Cleanup temp workspace after sync
+        await tempWorkspace.cleanup();
+      }
       this.logger.debug(`Reusing OpenCode instance for tenant ${tenantId}`);
       return existing;
     }
 
+    // Generate workspace for new instance
+    const workspace = await this.workspaceService.generateWorkspace(workspaceConfig);
     this.logger.log(`Creating new OpenCode instance for tenant ${tenantId}`);
-    const port = this.getNextPort();
+    const port = await this.findAvailablePort();
     const originalCwd = process.cwd();
 
     try {
-      process.chdir(newWorkspacePath);
+      process.chdir(workspace.path);
       const instance = await createOpencode({
         hostname: this.hostname,
         port,
@@ -240,7 +262,7 @@ export class OpencodeExecutorService implements OnModuleDestroy {
       const tenantInstance: TenantInstance = {
         instance,
         port,
-        workspacePath: newWorkspacePath,
+        workspacePath: workspace.path,
         lastUsed: Date.now(),
         idleTimer: null,
       };
@@ -331,10 +353,35 @@ export class OpencodeExecutorService implements OnModuleDestroy {
     }, this.idleTimeoutMs);
   }
 
-  private getNextPort(): number {
-    const port = this.nextPort++;
-    if (this.nextPort > 15000) this.nextPort = 14096;
-    return port;
+  /**
+   * Find an available port by checking if it's in use
+   */
+  private async findAvailablePort(maxAttempts = 20): Promise<number> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const port = this.nextPort++;
+      if (this.nextPort > 15000) this.nextPort = 14096;
+
+      const isAvailable = await this.isPortAvailable(port);
+      if (isAvailable) {
+        return port;
+      }
+      this.logger.debug(`Port ${port} in use, trying next...`);
+    }
+    throw new Error(`Could not find available port after ${maxAttempts} attempts`);
+  }
+
+  /**
+   * Check if a port is available by attempting to listen on it
+   */
+  private isPortAvailable(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      server.once("error", () => resolve(false));
+      server.once("listening", () => {
+        server.close(() => resolve(true));
+      });
+      server.listen(port, this.hostname);
+    });
   }
 
   private buildPrompt(messages: ChatMessage[]): string {

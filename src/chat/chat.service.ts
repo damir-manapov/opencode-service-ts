@@ -4,7 +4,6 @@ import { TenantNotFoundError } from "../errors/index.js";
 import { OpencodeExecutorService } from "../executor/opencode-executor.service.js";
 import { TenantService } from "../tenant/tenant.service.js";
 import type { TenantConfig } from "../tenant/tenant.types.js";
-import { WorkspaceService } from "../workspace/workspace.service.js";
 import type {
   AgentDefinition,
   ToolDefinition,
@@ -28,7 +27,6 @@ interface RequestContext {
 export class ChatService {
   constructor(
     private readonly tenantService: TenantService,
-    private readonly workspaceService: WorkspaceService,
     private readonly executorService: OpencodeExecutorService,
   ) {}
 
@@ -74,54 +72,49 @@ export class ChatService {
     request: ChatCompletionRequest,
   ): Promise<ChatCompletionResponse> {
     const ctx = await this.buildContext(tenantId, request);
-    const workspace = await this.workspaceService.generateWorkspace(ctx.workspaceConfig);
 
-    try {
-      const result = await this.executorService.execute({
-        tenantId,
-        workspace,
-        messages: request.messages,
-        model: ctx.modelSelection,
-        providerCredentials: ctx.providerCredentials,
-      });
+    const result = await this.executorService.execute({
+      tenantId,
+      workspaceConfig: ctx.workspaceConfig,
+      messages: request.messages,
+      model: ctx.modelSelection,
+      providerCredentials: ctx.providerCredentials,
+    });
 
-      const completionId = `chatcmpl-${randomUUID()}`;
-      const hasToolCalls = result.toolCalls.length > 0;
+    const completionId = `chatcmpl-${randomUUID()}`;
+    const hasToolCalls = result.toolCalls.length > 0;
 
-      return {
-        id: completionId,
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model: request.model,
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: "assistant",
-              content: hasToolCalls ? null : result.content,
-              tool_calls: hasToolCalls
-                ? result.toolCalls.map((tc) => ({
-                    id: `call_${randomUUID().slice(0, 8)}`,
-                    type: "function" as const,
-                    function: {
-                      name: tc.name,
-                      arguments: JSON.stringify(tc.input),
-                    },
-                  }))
-                : undefined,
-            },
-            finish_reason: hasToolCalls ? "tool_calls" : "stop",
+    return {
+      id: completionId,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: request.model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: hasToolCalls ? null : result.content,
+            tool_calls: hasToolCalls
+              ? result.toolCalls.map((tc) => ({
+                  id: `call_${randomUUID().slice(0, 8)}`,
+                  type: "function" as const,
+                  function: {
+                    name: tc.name,
+                    arguments: JSON.stringify(tc.input),
+                  },
+                }))
+              : undefined,
           },
-        ],
-        usage: {
-          prompt_tokens: 0,
-          completion_tokens: 0,
-          total_tokens: 0,
+          finish_reason: hasToolCalls ? "tool_calls" : "stop",
         },
-      };
-    } finally {
-      await workspace.cleanup();
-    }
+      ],
+      usage: {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+      },
+    };
   }
 
   /**
@@ -132,46 +125,41 @@ export class ChatService {
     request: ChatCompletionRequest,
   ): AsyncGenerator<ChatCompletionChunk, void, undefined> {
     const ctx = await this.buildContext(tenantId, request);
-    const workspace = await this.workspaceService.generateWorkspace(ctx.workspaceConfig);
     const completionId = `chatcmpl-${randomUUID()}`;
     const created = Math.floor(Date.now() / 1000);
 
-    try {
-      yield {
-        id: completionId,
-        object: "chat.completion.chunk",
-        created,
-        model: request.model,
-        choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
-      };
+    yield {
+      id: completionId,
+      object: "chat.completion.chunk",
+      created,
+      model: request.model,
+      choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
+    };
 
-      for await (const chunk of this.executorService.executeStreaming({
-        tenantId,
-        workspace,
-        messages: request.messages,
-        model: ctx.modelSelection,
-        providerCredentials: ctx.providerCredentials,
-      })) {
-        if (chunk.type === "text" && chunk.content) {
-          yield {
-            id: completionId,
-            object: "chat.completion.chunk",
-            created,
-            model: request.model,
-            choices: [{ index: 0, delta: { content: chunk.content }, finish_reason: null }],
-          };
-        } else if (chunk.type === "done") {
-          yield {
-            id: completionId,
-            object: "chat.completion.chunk",
-            created,
-            model: request.model,
-            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-          };
-        }
+    for await (const chunk of this.executorService.executeStreaming({
+      tenantId,
+      workspaceConfig: ctx.workspaceConfig,
+      messages: request.messages,
+      model: ctx.modelSelection,
+      providerCredentials: ctx.providerCredentials,
+    })) {
+      if (chunk.type === "text" && chunk.content) {
+        yield {
+          id: completionId,
+          object: "chat.completion.chunk",
+          created,
+          model: request.model,
+          choices: [{ index: 0, delta: { content: chunk.content }, finish_reason: null }],
+        };
+      } else if (chunk.type === "done") {
+        yield {
+          id: completionId,
+          object: "chat.completion.chunk",
+          created,
+          model: request.model,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        };
       }
-    } finally {
-      await workspace.cleanup();
     }
   }
 
